@@ -1,0 +1,29 @@
+# --- Xcode Specific ---
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM/
+
+# --- Swift Package Manager ---
+.build/
+Package.resolved
+
+# --- macOS System ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# --- IDE/Editor Specific ---
+.vscode/
+.idea/
+*.swp
+*~

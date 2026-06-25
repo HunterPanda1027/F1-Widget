@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import WidgetKit // <--- THIS WAS MISSING
 
 @main
 struct F1_WidgetApp: App {
@@ -15,3 +16,4 @@ struct F1_WidgetApp: App {
         }
     }
 }
+
