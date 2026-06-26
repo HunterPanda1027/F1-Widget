@@ -19,7 +19,7 @@ struct F1Driver: Codable, Identifiable {
 struct F1Result: Codable {
     let driverNumber: Int?
     let position: Int?
-    let points: Double? // Points can be half-points in F1 (e.g., 12.5)
+    let points: Double?
     let dnf: Bool?
     let dns: Bool?
     
@@ -32,7 +32,6 @@ struct F1Result: Codable {
     }
 }
 
-// The final object that gets saved to the Widget
 struct DriverStats: Codable, Identifiable {
     var id: Int { driverNumber }
     let driverNumber: Int
@@ -43,6 +42,7 @@ struct DriverStats: Codable, Identifiable {
     var wins: Int = 0
     var podiums: Int = 0
     var dnfs: Int = 0
+    var poles: Int = 0 // 🏎️ NEW: Added Poles!
 }
 
 // --- 2. The Service ---
@@ -52,38 +52,37 @@ class DriverService {
     let appGroupDefaults = UserDefaults(suiteName: "group.com.panda.f1widget")
     
     func updateChampionshipStandings() async throws {
-        print("📡 Checking for new 2026 race data...")
+        print("📡 Checking for new Quali or Race data...")
         
-        // 1. Get our "bookmark" (the ID of the last race we calculated)
-        let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedMeetingKey") ?? 0
+        // UPGRADE: We now track the exact Session instead of the whole Meeting
+        let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 0
         
-        // 2. Fetch the 2026 Schedule
-        guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026&session_name=Race") else { return }
+        // Notice we dropped "&session_name=Race" so we get Qualifying sessions too!
+        guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026") else { return }
         let (sessionData, _) = try await URLSession.shared.data(from: sessionsUrl)
-        let raceSessions = try JSONDecoder().decode([F1Session].self, from: sessionData)
+        let allSessions = try JSONDecoder().decode([F1Session].self, from: sessionData)
         
         let now = Date()
         
-        // 3. FILTER: Only get races that have happened AND that are newer than our bookmark
-        let newRaces = raceSessions.filter {
+        // FILTER: Only get past Race or Qualifying sessions that are NEW
+        let newSessions = allSessions.filter {
             ($0.startDate ?? Date.distantFuture) < now &&
-            ($0.meetingKey ?? 0) > lastProcessedKey
+            ($0.sessionKey ?? 0) > lastProcessedKey &&
+            ($0.sessionName == "Race" || $0.sessionName == "Qualifying")
         }
         
-        if newRaces.isEmpty {
-            print("⚡️ No new races found. Widget data is already up to date!")
-            return // EXIT EARLY! This saves battery and prevents API rate limits!
+        if newSessions.isEmpty {
+            print("⚡️ No new sessions found. Widget data is already up to date!")
+            return
         }
         
-        print("🏁 Found \(newRaces.count) new race(s)! Updating telemetry...")
+        print("🏁 Found \(newSessions.count) new session(s)! Updating telemetry...")
         
-        // 4. Load the existing scoreboard from the cache, or create a blank one if it's our first time
         var statsDict: [Int: DriverStats] = [:]
         let existingStats = getCachedStandings()
         
         if existingStats.isEmpty {
-            // First time running: Fetch the 2026 grid to initialize the dictionary
-            print("🆕 First time setup: Fetching 2026 driver grid...")
+            print("🆕 First time setup: Fetching driver grid...")
             guard let driversUrl = URL(string: "https://api.openf1.org/v1/drivers?session_key=latest") else { return }
             let (driverData, _) = try await URLSession.shared.data(from: driversUrl)
             let drivers = try JSONDecoder().decode([F1Driver].self, from: driverData)
@@ -98,64 +97,64 @@ class DriverService {
                 )
             }
         } else {
-            // Not our first time: Load the old points into our dictionary so we can add to them
             for stat in existingStats {
                 statsDict[stat.driverNumber] = stat
             }
         }
         
-        // 5. Fetch ONLY the results for the new races
-        var highestMeetingKeyProcessed = lastProcessedKey
+        var highestSessionKeyProcessed = lastProcessedKey
         
-        for race in newRaces {
-            guard let meetingKey = race.meetingKey,
-                  let resultsUrl = URL(string: "https://api.openf1.org/v1/session_result?meeting_key=\(meetingKey)") else { continue }
+        for session in newSessions {
+            guard let sessionKey = session.sessionKey,
+                  let resultsUrl = URL(string: "https://api.openf1.org/v1/session_result?session_key=\(sessionKey)") else { continue }
             
             do {
-                try await Task.sleep(nanoseconds: 400_000_000) // Respect rate limits
+                try await Task.sleep(nanoseconds: 400_000_000)
                 let (resultData, _) = try await URLSession.shared.data(from: resultsUrl)
                 let results = try JSONDecoder().decode([F1Result].self, from: resultData)
                 
                 for result in results {
                     guard let driverNum = result.driverNumber, statsDict[driverNum] != nil else { continue }
                     
-                    // Add new points to existing points!
-                    statsDict[driverNum]?.points += result.points ?? 0.0
-                    
-                    if let pos = result.position {
-                        if pos == 1 { statsDict[driverNum]?.wins += 1 }
-                        if pos <= 3 { statsDict[driverNum]?.podiums += 1 }
+                    // IF IT IS A SUNDAY RACE: Add Points, Wins, Podiums, DNFs
+                    if session.sessionName == "Race" {
+                        statsDict[driverNum]?.points += result.points ?? 0.0
+                        
+                        if let pos = result.position {
+                            if pos == 1 { statsDict[driverNum]?.wins += 1 }
+                            if pos <= 3 { statsDict[driverNum]?.podiums += 1 }
+                        }
+                        if result.dnf == true || result.dns == true {
+                            statsDict[driverNum]?.dnfs += 1
+                        }
                     }
-                    if result.dnf == true || result.dns == true {
-                        statsDict[driverNum]?.dnfs += 1
+                    // IF IT IS SATURDAY QUALIFYING: Check for Pole Position
+                    else if session.sessionName == "Qualifying" {
+                        if let pos = result.position, pos == 1 {
+                            statsDict[driverNum]?.poles += 1
+                        }
                     }
                 }
                 
-                // Keep track of the highest meeting key we successfully processed
-                if meetingKey > highestMeetingKeyProcessed {
-                    highestMeetingKeyProcessed = meetingKey
+                if sessionKey > highestSessionKeyProcessed {
+                    highestSessionKeyProcessed = sessionKey
                 }
                 
             } catch {
-                print("⚠️ Failed to fetch results for new meeting \(meetingKey)")
+                print("⚠️ Failed to fetch results for session \(sessionKey)")
             }
         }
         
-        // 6. Sort and Save
         let sortedStandings = statsDict.values.sorted { $0.points > $1.points }
         
         if let encodedData = try? JSONEncoder().encode(sortedStandings) {
             appGroupDefaults?.set(encodedData, forKey: "cachedStandings")
             appGroupDefaults?.set(Date(), forKey: "lastStandingsUpdate")
-            
-            // SAVE THE BOOKMARK! So we don't calculate these races again tomorrow.
-            appGroupDefaults?.set(highestMeetingKeyProcessed, forKey: "lastProcessedMeetingKey")
-            
-            print("✅ Successfully updated standings with new race data!")
+            appGroupDefaults?.set(highestSessionKeyProcessed, forKey: "lastProcessedSessionKey")
+            print("✅ Successfully updated standings with latest session data!")
         }
     }
     
-    // 7. Helper function for the Widget
     func getCachedStandings() -> [DriverStats] {
         guard let data = appGroupDefaults?.data(forKey: "cachedStandings"),
               let standings = try? JSONDecoder().decode([DriverStats].self, from: data) else {

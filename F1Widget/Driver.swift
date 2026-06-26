@@ -208,6 +208,7 @@ struct DriverWidgetView: View {
                     HStack(spacing: 8) {
                         StatBlock(title: "W", value: stats.wins)
                         StatBlock(title: "POD", value: stats.podiums)
+                        StatBlock(title: "POLE", value: stats.poles)
                         StatBlock(title: "DNF", value: stats.dnfs)
                     }
                 }

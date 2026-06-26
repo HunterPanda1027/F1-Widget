@@ -8,12 +8,14 @@ struct F1Session: Codable, Identifiable {
     let dateStart: String?
     let circuitShortName: String?
     let meetingKey: Int?
+    let sessionKey: Int?
     
     enum CodingKeys: String, CodingKey {
         case sessionName = "session_name"
         case dateStart = "date_start"
         case circuitShortName = "circuit_short_name"
         case meetingKey = "meeting_key"
+        case sessionKey = "session_key"
     }
 
     var startDate: Date? {
