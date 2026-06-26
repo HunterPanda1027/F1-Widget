@@ -36,11 +36,11 @@ struct DriverInfo {
     static let all: [DriverInfo] = [
         DriverInfo(code: "HAM", name: "Lewis Hamilton",    team: "Ferrari",      number: 44,  teamColor: teamColors["Ferrari"]!),
         DriverInfo(code: "LEC", name: "Charles Leclerc",   team: "Ferrari",      number: 16,  teamColor: teamColors["Ferrari"]!),
-        DriverInfo(code: "NOR", name: "Lando Norris",      team: "McLaren",      number: 4,   teamColor: teamColors["McLaren"]!),
+        DriverInfo(code: "NOR", name: "Lando Norris",      team: "McLaren",      number: 1,   teamColor: teamColors["McLaren"]!),
         DriverInfo(code: "PIA", name: "Oscar Piastri",     team: "McLaren",      number: 81,  teamColor: teamColors["McLaren"]!),
         DriverInfo(code: "RUS", name: "George Russell",    team: "Mercedes",     number: 63,  teamColor: teamColors["Mercedes"]!),
         DriverInfo(code: "ANT", name: "Kimi Antonelli",    team: "Mercedes",     number: 12,  teamColor: teamColors["Mercedes"]!),
-        DriverInfo(code: "VER", name: "Max Verstappen",    team: "Red Bull",     number: 1,   teamColor: teamColors["Red Bull"]!),
+        DriverInfo(code: "VER", name: "Max Verstappen",    team: "Red Bull",     number: 3,   teamColor: teamColors["Red Bull"]!),
         DriverInfo(code: "HAD", name: "Isack Hadjar",      team: "Red Bull",     number: 6,   teamColor: teamColors["Red Bull"]!),
         DriverInfo(code: "ALO", name: "Fernando Alonso",   team: "Aston Martin", number: 14,  teamColor: teamColors["Aston Martin"]!),
         DriverInfo(code: "STR", name: "Lance Stroll",      team: "Aston Martin", number: 18,  teamColor: teamColors["Aston Martin"]!),

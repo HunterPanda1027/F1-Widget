@@ -1,6 +1,6 @@
 import Foundation
 
-// --- 1. Data Models ---
+// --- 1. Data Models (These were missing!) ---
 struct F1Driver: Codable, Identifiable {
     var id: Int { driverNumber ?? 0 }
     let driverNumber: Int?
@@ -42,72 +42,52 @@ struct DriverStats: Codable, Identifiable {
     var wins: Int = 0
     var podiums: Int = 0
     var dnfs: Int = 0
-    var poles: Int = 0 // 🏎️ NEW: Added Poles!
+    var poles: Int = 0
 }
+
 
 // --- 2. The Service ---
 class DriverService {
     static let shared = DriverService()
-    
     let appGroupDefaults = UserDefaults(suiteName: "group.com.panda.f1widget")
     
     func updateChampionshipStandings() async throws {
+        // Purge cache
         appGroupDefaults?.removeObject(forKey: "cachedStandings")
         appGroupDefaults?.removeObject(forKey: "lastProcessedSessionKey")
-        print("🧹 Cache purged! Recalculating everything from scratch...")
 
-
-        print("📡 Checking for new Quali or Race data...")
-        
-        // UPGRADE: We now track the exact Session instead of the whole Meeting
         let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 0
         
-        // Notice we dropped "&session_name=Race" so we get Qualifying sessions too!
-        guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026") else { return }
+        guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026"),
+              let driversUrl = URL(string: "https://api.openf1.org/v1/drivers?session_key=latest") else { return }
+        
         let (sessionData, _) = try await URLSession.shared.data(from: sessionsUrl)
+        let (driverData, _) = try await URLSession.shared.data(from: driversUrl)
+        
         let allSessions = try JSONDecoder().decode([F1Session].self, from: sessionData)
+        let drivers = try JSONDecoder().decode([F1Driver].self, from: driverData)
         
-        let now = Date()
+        var statsDict: [String: DriverStats] = [:]
+        var numberToAcronym: [Int: String] = [:]
         
-        // FILTER: Only get past Race or Qualifying sessions that are NEW
+        for driver in drivers {
+            guard let acronym = driver.nameAcronym, let num = driver.driverNumber else { continue }
+            numberToAcronym[num] = acronym
+            statsDict[acronym] = DriverStats(
+                driverNumber: num,
+                fullName: driver.fullName ?? "Unknown",
+                nameAcronym: acronym,
+                teamName: driver.teamName ?? "Unknown Team"
+            )
+        }
+        
         let newSessions = allSessions.filter {
-            ($0.startDate ?? Date.distantFuture) < now &&
+            ($0.startDate ?? Date.distantFuture) < Date() &&
             ($0.sessionKey ?? 0) > lastProcessedKey &&
-            ($0.sessionName == "Race" || $0.sessionName == "Qualifying" || $0.sessionName == "Sprint")
+            ["Race", "Qualifying", "Sprint"].contains($0.sessionName ?? "")
         }
         
-        if newSessions.isEmpty {
-            print("⚡️ No new sessions found. Widget data is already up to date!")
-            return
-        }
-        
-        print("🏁 Found \(newSessions.count) new session(s)! Updating telemetry...")
-        
-        var statsDict: [Int: DriverStats] = [:]
-        let existingStats = getCachedStandings()
-        
-        if existingStats.isEmpty {
-            print("🆕 First time setup: Fetching driver grid...")
-            guard let driversUrl = URL(string: "https://api.openf1.org/v1/drivers?session_key=latest") else { return }
-            let (driverData, _) = try await URLSession.shared.data(from: driversUrl)
-            let drivers = try JSONDecoder().decode([F1Driver].self, from: driverData)
-            
-            for driver in drivers {
-                guard let number = driver.driverNumber else { continue }
-                statsDict[number] = DriverStats(
-                    driverNumber: number,
-                    fullName: driver.fullName ?? "Unknown",
-                    nameAcronym: driver.nameAcronym ?? "UNK",
-                    teamName: driver.teamName ?? "Unknown Team"
-                )
-            }
-        } else {
-            for stat in existingStats {
-                statsDict[stat.driverNumber] = stat
-            }
-        }
-        
-        var highestSessionKeyProcessed = lastProcessedKey
+        var highestSessionKey = lastProcessedKey
         
         for session in newSessions {
             guard let sessionKey = session.sessionKey,
@@ -119,60 +99,39 @@ class DriverService {
                 let results = try JSONDecoder().decode([F1Result].self, from: resultData)
                 
                 for result in results {
-                    guard let driverNum = result.driverNumber, statsDict[driverNum] != nil else { continue }
+                    guard let num = result.driverNumber,
+                          let acronym = numberToAcronym[num],
+                          var stats = statsDict[acronym] else { continue }
                     
-                    // 1. IF IT IS A SUNDAY RACE: Add Points, Wins, Podiums, DNFs
                     if session.sessionName == "Race" {
-                        statsDict[driverNum]?.points += result.points ?? 0.0
-                        
+                        stats.points += result.points ?? 0.0
                         if let pos = result.position {
-                            if pos == 1 { statsDict[driverNum]?.wins += 1 }
-                            if pos <= 3 { statsDict[driverNum]?.podiums += 1 }
+                            if pos == 1 { stats.wins += 1 }
+                            if pos <= 3 { stats.podiums += 1 }
                         }
-                        if result.dnf == true || result.dns == true {
-                            statsDict[driverNum]?.dnfs += 1
-                        }
+                        if result.dnf == true || result.dns == true { stats.dnfs += 1 }
+                    } else if session.sessionName == "Sprint" {
+                        stats.points += result.points ?? 0.0
+                        if result.dnf == true || result.dns == true { stats.dnfs += 1 }
+                    } else if session.sessionName == "Qualifying" {
+                        if result.position == 1 { stats.poles += 1 }
                     }
-                    // 2. IF IT IS A SATURDAY SPRINT: Add Points and DNFs ONLY
-                    else if session.sessionName == "Sprint" {
-                        statsDict[driverNum]?.points += result.points ?? 0.0
-                        
-                        if result.dnf == true || result.dns == true {
-                            statsDict[driverNum]?.dnfs += 1
-                        }
-                    }
-                    // 3. IF IT IS QUALIFYING: Check for Pole Position
-                    else if session.sessionName == "Qualifying" {
-                        if let pos = result.position, pos == 1 {
-                            statsDict[driverNum]?.poles += 1
-                        }
-                    }
+                    statsDict[acronym] = stats
                 }
-                
-                if sessionKey > highestSessionKeyProcessed {
-                    highestSessionKeyProcessed = sessionKey
-                }
-                
-            } catch {
-                print("⚠️ Failed to fetch results for session \(sessionKey)")
-            }
+                highestSessionKey = max(highestSessionKey, sessionKey)
+            } catch { print("⚠️ Error: \(error)") }
         }
         
-        let sortedStandings = statsDict.values.sorted { $0.points > $1.points }
-        
-        if let encodedData = try? JSONEncoder().encode(sortedStandings) {
-            appGroupDefaults?.set(encodedData, forKey: "cachedStandings")
-            appGroupDefaults?.set(Date(), forKey: "lastStandingsUpdate")
-            appGroupDefaults?.set(highestSessionKeyProcessed, forKey: "lastProcessedSessionKey")
-            print("✅ Successfully updated standings with latest session data!")
+        let sorted = statsDict.values.sorted { $0.points > $1.points }
+        if let encoded = try? JSONEncoder().encode(sorted) {
+            appGroupDefaults?.set(encoded, forKey: "cachedStandings")
+            appGroupDefaults?.set(highestSessionKey, forKey: "lastProcessedSessionKey")
         }
     }
     
     func getCachedStandings() -> [DriverStats] {
         guard let data = appGroupDefaults?.data(forKey: "cachedStandings"),
-              let standings = try? JSONDecoder().decode([DriverStats].self, from: data) else {
-            return []
-        }
+              let standings = try? JSONDecoder().decode([DriverStats].self, from: data) else { return [] }
         return standings
     }
 }
