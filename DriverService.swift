@@ -1,6 +1,6 @@
 import Foundation
 
-// --- 1. Data Models (These were missing!) ---
+// --- 1. Data Models ---
 struct F1Driver: Codable, Identifiable {
     var id: Int { driverNumber ?? 0 }
     let driverNumber: Int?
@@ -45,103 +45,120 @@ struct DriverStats: Codable, Identifiable {
     var poles: Int = 0
 }
 
-
 // --- 2. The Service ---
 class DriverService {
     static let shared = DriverService()
     let appGroupDefaults = UserDefaults(suiteName: "group.com.panda.f1widget")
     
     func updateChampionshipStandings() async throws {
-            // 🚨 FORCE RESET: Bypassing the cache memory to force a full season rebuild
-            let lastProcessedKey = 0
+        
+        // 🚨 Fetch the last processed session key so we don't recalculate the whole season!
+        // (If you ever need to force a reset, temporarily change this to: let lastProcessedKey = 0)
+        let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 0  //appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ??
+        
+        guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026") else { return }
+        
+        // 1. Fetch Schedule
+        let (sessionData, response) = try await URLSession.shared.data(from: sessionsUrl)
+        
+        // 2. Dual-Layer Protection (Rate Limit & Paywall)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 429 {
+            print("⚠️ Rate limit exceeded (429). Keeping existing cache.")
+            return
+        }
+        if let rawJSON = String(data: sessionData, encoding: .utf8), rawJSON.contains("restricted") {
+            print("🛑 API Blocked: Live session in progress. Widget will use cached standings.")
+            return
+        }
+        
+        let allSessions = try JSONDecoder().decode([F1Session].self, from: sessionData)
+        
+        var statsDict: [String: DriverStats] = [:]
+        var numberToAcronym: [Int: String] = [:]
+        
+        // 3. Load your hardcoded 2026 grid
+        let drivers = DriverInfo.all
+        
+        for driver in drivers {
+            let acronym = driver.code
+            let num = driver.number
             
-            guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026") else { return }
+            numberToAcronym[num] = acronym
+            statsDict[acronym] = DriverStats(
+                driverNumber: num,
+                fullName: driver.name,
+                nameAcronym: acronym,
+                teamName: driver.team
+            )
+        }
+        
+        // 4. Filter for only unprocessed point-scoring sessions
+        let newSessions = allSessions.filter {
+            ($0.startDate ?? Date.distantFuture) < Date() &&
+            ($0.sessionKey ?? 0) > lastProcessedKey &&
+            ["Race", "Sprint"].contains($0.sessionName ?? "")
+        }
+        
+        // 🏁 If there are no new races to process, stop here and leave the cache alone!
+        guard !newSessions.isEmpty else {
+            print("✨ No new sessions to process. Cache is pristine.")
+            return
+        }
+        
+        var highestSessionKey = lastProcessedKey
+        
+        // 5. Calculate Points
+        for session in newSessions {
+            // 🚨 DELAY: 1 full second to guarantee we stay under the API limit
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             
-            let (sessionData, _) = try await URLSession.shared.data(from: sessionsUrl)
-            if let rawJSON = String(data: sessionData, encoding: .utf8), rawJSON.contains("restricted") {
-                print("🛑 API Blocked: Live session in progress. Widget will use cached standings.")
-                return
-            }
+            guard let sessionKey = session.sessionKey,
+                  let resultsUrl = URL(string: "https://api.openf1.org/v1/session_result?session_key=\(sessionKey)") else { continue }
             
-            let allSessions = try JSONDecoder().decode([F1Session].self, from: sessionData)
-            
-            var statsDict: [String: DriverStats] = [:]
-            var numberToAcronym: [Int: String] = [:]
-            
-            // Load your hardcoded 2026 grid
-            let drivers = DriverInfo.all
-            
-            for driver in drivers {
-                let acronym = driver.code
-                let num = driver.number
+            do {
+                let (resultData, _) = try await URLSession.shared.data(from: resultsUrl)
+                let results = try JSONDecoder().decode([F1Result].self, from: resultData)
                 
-                numberToAcronym[num] = acronym
-                statsDict[acronym] = DriverStats(
-                    driverNumber: num,
-                    fullName: driver.name,
-                    nameAcronym: acronym,
-                    teamName: driver.team
-                )
-            }
-            
-            let newSessions = allSessions.filter {
-                ($0.startDate ?? Date.distantFuture) < Date() &&
-                ($0.sessionKey ?? 0) > lastProcessedKey &&
-                ["Race", "Sprint"].contains($0.sessionName ?? "") // Removed Qualifying since no points are awarded
-            }
-            
-            var highestSessionKey = lastProcessedKey
-            
-            for session in newSessions {
-                // 🚨 INCREASED DELAY: 1 full second to guarantee we stay under the limit
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                
-                guard let sessionKey = session.sessionKey,
-                      let resultsUrl = URL(string: "https://api.openf1.org/v1/session_result?session_key=\(sessionKey)") else { continue }
-                
-                do {
-                    let (resultData, _) = try await URLSession.shared.data(from: resultsUrl)
-                    let results = try JSONDecoder().decode([F1Result].self, from: resultData)
+                for result in results {
+                    guard let num = result.driverNumber,
+                          let acronym = numberToAcronym[num],
+                          var stats = statsDict[acronym],
+                          let pos = result.position else { continue }
                     
-                    for result in results {
-                        guard let num = result.driverNumber,
-                              let acronym = numberToAcronym[num],
-                              var stats = statsDict[acronym],
-                              let pos = result.position else { continue }
+                    if session.sessionName == "Race" {
+                        // Manual point calculation in case API returns nil
+                        let racePoints = [1: 25.0, 2: 18.0, 3: 15.0, 4: 12.0, 5: 10.0, 6: 8.0, 7: 6.0, 8: 4.0, 9: 2.0, 10: 1.0]
+                        stats.points += result.points ?? (racePoints[pos] ?? 0.0)
                         
-                        if session.sessionName == "Race" {
-                            // Manual point calculation in case API returns nil
-                            let racePoints = [1: 25.0, 2: 18.0, 3: 15.0, 4: 12.0, 5: 10.0, 6: 8.0, 7: 6.0, 8: 4.0, 9: 2.0, 10: 1.0]
-                            stats.points += result.points ?? (racePoints[pos] ?? 0.0)
-                            
-                            if pos == 1 { stats.wins += 1 }
-                            if pos <= 3 { stats.podiums += 1 }
-                            if result.dnf == true || result.dns == true { stats.dnfs += 1 }
-                            
-                        } else if session.sessionName == "Sprint" {
-                            let sprintPoints = [1: 8.0, 2: 7.0, 3: 6.0, 4: 5.0, 5: 4.0, 6: 3.0, 7: 2.0, 8: 1.0]
-                            stats.points += result.points ?? (sprintPoints[pos] ?? 0.0)
-                            
-                            if result.dnf == true || result.dns == true { stats.dnfs += 1 }
-                        }
+                        if pos == 1 { stats.wins += 1 }
+                        if pos <= 3 { stats.podiums += 1 }
+                        if result.dnf == true || result.dns == true { stats.dnfs += 1 }
                         
-                        statsDict[acronym] = stats
+                    } else if session.sessionName == "Sprint" {
+                        let sprintPoints = [1: 8.0, 2: 7.0, 3: 6.0, 4: 5.0, 5: 4.0, 6: 3.0, 7: 2.0, 8: 1.0]
+                        stats.points += result.points ?? (sprintPoints[pos] ?? 0.0)
+                        
+                        if result.dnf == true || result.dns == true { stats.dnfs += 1 }
                     }
-                    highestSessionKey = max(highestSessionKey, sessionKey)
                     
-                } catch {
-                    // This will tell you if a specific session failed to decode
-                    print("⚠️ Error processing session \(sessionKey): \(error)")
+                    statsDict[acronym] = stats
                 }
-            }
-            
-            let sorted = statsDict.values.sorted { $0.points > $1.points }
-            if let encoded = try? JSONEncoder().encode(sorted) {
-                appGroupDefaults?.set(encoded, forKey: "cachedStandings")
-                appGroupDefaults?.set(highestSessionKey, forKey: "lastProcessedSessionKey")
+                highestSessionKey = max(highestSessionKey, sessionKey)
+                
+            } catch {
+                print("⚠️ Error processing session \(sessionKey): \(error)")
             }
         }
+        
+        // 6. Save valid data back to the cache
+        let sorted = statsDict.values.sorted { $0.points > $1.points }
+        if let encoded = try? JSONEncoder().encode(sorted) {
+            appGroupDefaults?.set(encoded, forKey: "cachedStandings")
+            appGroupDefaults?.set(highestSessionKey, forKey: "lastProcessedSessionKey")
+        }
+    }
     
+    // 7. Retrieve from cache for the Widget View
     func getCachedStandings() -> [DriverStats] {
         guard let data = appGroupDefaults?.data(forKey: "cachedStandings"),
               let standings = try? JSONDecoder().decode([DriverStats].self, from: data) else { return [] }

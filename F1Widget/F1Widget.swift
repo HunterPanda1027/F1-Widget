@@ -38,38 +38,78 @@ struct Provider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<F1Entry>) -> ()) {
-        Task {
-            // 1. Fetch the next meeting
-            guard let nextMeeting = try? await F1Service.shared.fetchNextMeeting(),
-                  let meetingKey = nextMeeting.meetingKey else {
-                let fallback = F1Entry(date: Date(), gpName: "No Upcoming Races", locationName: "Season Complete", targetSessionName: nil, targetSessionDate: nil, weekendSchedule: [], imageName: "Default")
-                completion(Timeline(entries: [fallback], policy: .after(Date().addingTimeInterval(3600))))
-                return
+            Task {
+                let appGroupDefaults = UserDefaults(suiteName: appGroupID)
+                let now = Date()
+                
+                var nextMeeting: F1Meeting? = nil
+                var weekendSessions: [F1Session] = []
+                
+                do {
+                    // 1. Attempt to fetch fresh data from the network
+                    if let meeting = try await F1Service.shared.fetchNextMeeting(), let meetingKey = meeting.meetingKey {
+                        nextMeeting = meeting
+                        weekendSessions = (try? await F1Service.shared.fetchSessions(for: meetingKey)) ?? []
+                        
+                        // 💾 SUCCESS: Save this fresh data to the local backup cache
+                        if let encodedMeeting = try? JSONEncoder().encode(meeting) {
+                            appGroupDefaults?.set(encodedMeeting, forKey: "backup_cached_meeting")
+                        }
+                        if let encodedSessions = try? JSONEncoder().encode(weekendSessions) {
+                            appGroupDefaults?.set(encodedSessions, forKey: "backup_cached_sessions")
+                        }
+                    }
+                } catch {
+                    print("🌐 API Request failed or restricted during live session. Attempting cache fallback...")
+                }
+                
+                // 2. FALLBACK LAYER: If network failed, look for the last known good data in the cache
+                if nextMeeting == nil {
+                    if let savedMeetingData = appGroupDefaults?.data(forKey: "backup_cached_meeting"),
+                       let cachedMeeting = try? JSONDecoder().decode(F1Meeting.self, from: savedMeetingData) {
+                        nextMeeting = cachedMeeting
+                    }
+                    
+                    if let savedSessionsData = appGroupDefaults?.data(forKey: "backup_cached_sessions"),
+                       let cachedSessions = try? JSONDecoder().decode([F1Session].self, from: savedSessionsData) {
+                        weekendSessions = cachedSessions
+                    }
+                }
+                
+                // 3. CONSTRUCT TIMELINE (Whether it came from network or cache)
+                if let meeting = nextMeeting {
+                    let nextSession = weekendSessions.first { ($0.startDate ?? Date.distantPast) > now }
+                    
+                    let entry = F1Entry(
+                        date: now,
+                        gpName: meeting.meetingName ?? "Unknown GP",
+                        locationName: meeting.circuitShortName ?? "Unknown Location",
+                        targetSessionName: nextSession?.sessionName,
+                        targetSessionDate: nextSession?.startDate,
+                        weekendSchedule: weekendSessions,
+                        imageName: self.getMappedImageName(for: meeting.circuitShortName ?? "")
+                    )
+                    
+                    // Refresh 1 minute after this session starts to transition cleanly
+                    let refreshDate = nextSession?.startDate?.addingTimeInterval(60) ?? now.addingTimeInterval(3600)
+                    let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
+                    completion(timeline)
+                    return
+                }
+                
+                // 4. ABSOLUTE WORST-CASE FALLBACK: Run only if there is zero internet AND zero cached data
+                let absoluteFallback = F1Entry(
+                    date: now,
+                    gpName: "No Race Data Available",
+                    locationName: "Please check internet connection",
+                    targetSessionName: nil,
+                    targetSessionDate: nil,
+                    weekendSchedule: [],
+                    imageName: "Default"
+                )
+                completion(Timeline(entries: [absoluteFallback], policy: .after(now.addingTimeInterval(1800))))
             }
-            
-            // 2. Fetch only the sessions for that specific meeting
-            let weekendSessions = (try? await F1Service.shared.fetchSessions(for: meetingKey)) ?? []
-            
-            let now = Date()
-            let nextSession = weekendSessions.first { ($0.startDate ?? Date.distantPast) > now }
-            
-            // 3. Construct the entry
-            let entry = F1Entry(date: now,
-                                gpName: nextMeeting.meetingName ?? "Unknown GP",
-                                locationName: nextMeeting.circuitShortName ?? "Unknown Location",
-                                targetSessionName: nextSession?.sessionName,
-                                targetSessionDate: nextSession?.startDate,
-                                weekendSchedule: weekendSessions,
-                                imageName: self.getMappedImageName(for: nextMeeting.circuitShortName ?? ""))
-            
-            // UPGRADE: Tell the widget to refresh exactly 1 minute AFTER this session starts
-            // so it can automatically switch to counting down to the NEXT session!
-            let refreshDate = nextSession?.startDate?.addingTimeInterval(60) ?? now.addingTimeInterval(3600)
-            let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
-            
-            completion(timeline)
         }
-    }
 }
 
 // 3. The View (Polished Telemetry Typography)
