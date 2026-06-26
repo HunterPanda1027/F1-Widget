@@ -74,6 +74,19 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 24)
             }
+            .task {
+                do {
+                    print("📡 Fetching latest championship standings...")
+                    // 1. Fetch the stats and save them to the App Group
+                    try await DriverService.shared.updateChampionshipStandings()
+                    
+                    // 2. Tell the widgets to wake up and redraw with the new numbers
+                    WidgetCenter.shared.reloadAllTimelines()
+                    print("✅ Widgets successfully reloaded with new stats!")
+                } catch {
+                    print("❌ Failed to fetch standings: \(error)")
+                }
+            }
         }
     }
 

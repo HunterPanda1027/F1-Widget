@@ -68,81 +68,78 @@ struct DriverInfo {
     }
 }
 
-// MARK: - Timeline Entries
-
-struct Driver1Entry: TimelineEntry {
+// MARK: - Timeline Entry
+// Unified entry for all 4 widgets!
+struct DriverEntry: TimelineEntry {
     let date: Date
     let driver: DriverInfo
+    let stats: DriverStats? // NEW: Holds the fetched stats
 }
 
-struct Driver2Entry: TimelineEntry {
-    let date: Date
-    let driver: DriverInfo
-}
-
-struct Driver3Entry: TimelineEntry {
-    let date: Date
-    let driver: DriverInfo
-}
-
-struct Driver4Entry: TimelineEntry {
-    let date: Date
-    let driver: DriverInfo
+// MARK: - Helper to fetch stats
+func getStatsFor(driver: DriverInfo) -> DriverStats? {
+    let allStats = DriverService.shared.getCachedStandings()
+    return allStats.first { $0.driverNumber == driver.number }
 }
 
 // MARK: - Providers
 
 struct Driver1Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Driver1Entry {
-        Driver1Entry(date: Date(), driver: DriverInfo.from(code: "HAM"))
+    func placeholder(in context: Context) -> DriverEntry {
+        DriverEntry(date: Date(), driver: DriverInfo.from(code: "HAM"), stats: DriverStats(driverNumber: 44, fullName: "Lewis Hamilton", nameAcronym: "HAM", teamName: "Ferrari", points: 150, wins: 2, podiums: 5, dnfs: 0))
     }
-    func getSnapshot(in context: Context, completion: @escaping (Driver1Entry) -> Void) {
-        completion(Driver1Entry(date: Date(), driver: DriverInfo.fromKey(driver1Key)))
+    func getSnapshot(in context: Context, completion: @escaping (DriverEntry) -> Void) {
+        let driver = DriverInfo.fromKey(driver1Key)
+        completion(DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver)))
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Driver1Entry>) -> Void) {
-        let defaults = UserDefaults(suiteName: appGroupID)
-        print("📦 Widget reading from suite: \(String(describing: defaults))")
-        print("📦 driver1Key value: \(String(describing: defaults?.string(forKey: driver1Key)))")
-        let entry = Driver1Entry(date: Date(), driver: DriverInfo.fromKey(driver1Key))
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DriverEntry>) -> Void) {
+        let driver = DriverInfo.fromKey(driver1Key)
+        let entry = DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver))
         completion(Timeline(entries: [entry], policy: .never))
     }
 }
 
 struct Driver2Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Driver2Entry {
-        Driver2Entry(date: Date(), driver: DriverInfo.from(code: "VER"))
+    func placeholder(in context: Context) -> DriverEntry {
+        DriverEntry(date: Date(), driver: DriverInfo.from(code: "VER"), stats: nil)
     }
-    func getSnapshot(in context: Context, completion: @escaping (Driver2Entry) -> Void) {
-        completion(Driver2Entry(date: Date(), driver: DriverInfo.fromKey(driver2Key)))
+    func getSnapshot(in context: Context, completion: @escaping (DriverEntry) -> Void) {
+        let driver = DriverInfo.fromKey(driver2Key)
+        completion(DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver)))
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Driver2Entry>) -> Void) {
-        let entry = Driver2Entry(date: Date(), driver: DriverInfo.fromKey(driver2Key))
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DriverEntry>) -> Void) {
+        let driver = DriverInfo.fromKey(driver2Key)
+        let entry = DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver))
         completion(Timeline(entries: [entry], policy: .never))
     }
 }
 
 struct Driver3Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Driver3Entry {
-        Driver3Entry(date: Date(), driver: DriverInfo.from(code: "NOR"))
+    func placeholder(in context: Context) -> DriverEntry {
+        DriverEntry(date: Date(), driver: DriverInfo.from(code: "NOR"), stats: nil)
     }
-    func getSnapshot(in context: Context, completion: @escaping (Driver3Entry) -> Void) {
-        completion(Driver3Entry(date: Date(), driver: DriverInfo.fromKey(driver3Key)))
+    func getSnapshot(in context: Context, completion: @escaping (DriverEntry) -> Void) {
+        let driver = DriverInfo.fromKey(driver3Key)
+        completion(DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver)))
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Driver3Entry>) -> Void) {
-        let entry = Driver3Entry(date: Date(), driver: DriverInfo.fromKey(driver3Key))
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DriverEntry>) -> Void) {
+        let driver = DriverInfo.fromKey(driver3Key)
+        let entry = DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver))
         completion(Timeline(entries: [entry], policy: .never))
     }
 }
 
 struct Driver4Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Driver4Entry {
-        Driver4Entry(date: Date(), driver: DriverInfo.from(code: "LEC"))
+    func placeholder(in context: Context) -> DriverEntry {
+        DriverEntry(date: Date(), driver: DriverInfo.from(code: "LEC"), stats: nil)
     }
-    func getSnapshot(in context: Context, completion: @escaping (Driver4Entry) -> Void) {
-        completion(Driver4Entry(date: Date(), driver: DriverInfo.fromKey(driver4Key)))
+    func getSnapshot(in context: Context, completion: @escaping (DriverEntry) -> Void) {
+        let driver = DriverInfo.fromKey(driver4Key)
+        completion(DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver)))
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Driver4Entry>) -> Void) {
-        let entry = Driver4Entry(date: Date(), driver: DriverInfo.fromKey(driver4Key))
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DriverEntry>) -> Void) {
+        let driver = DriverInfo.fromKey(driver4Key)
+        let entry = DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver))
         completion(Timeline(entries: [entry], policy: .never))
     }
 }
@@ -151,12 +148,14 @@ struct Driver4Provider: TimelineProvider {
 
 struct DriverWidgetView: View {
     let driver: DriverInfo
+    let stats: DriverStats?
     let slotLabel: String
 
     private let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // TOP HEADER: Name and Number
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(driver.name.uppercased())
@@ -181,7 +180,7 @@ struct DriverWidgetView: View {
                     .foregroundColor(driver.teamColor)
             }
 
-            Spacer()
+            Spacer(minLength: 5)
 
             Rectangle()
                 .fill(LinearGradient(
@@ -190,9 +189,33 @@ struct DriverWidgetView: View {
                 .frame(height: 2)
                 .padding(.vertical, 4)
 
-            Text("\(slotLabel) • AWAITING TELEMETRY...")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(.gray)
+            // BOTTOM TELEMETRY: Stats Array
+            if let stats = stats {
+                HStack(alignment: .bottom, spacing: 12) {
+                    // Points
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("PTS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.gray)
+                        Text(String(format: "%g", stats.points)) // %g drops trailing zeros (e.g., 25.0 -> 25)
+                            .font(.system(size: 16, weight: .black, design: .monospaced))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Spacer()
+                    
+                    // Minor Stats Grouping
+                    HStack(spacing: 8) {
+                        StatBlock(title: "W", value: stats.wins)
+                        StatBlock(title: "POD", value: stats.podiums)
+                        StatBlock(title: "DNF", value: stats.dnfs)
+                    }
+                }
+            } else {
+                Text("\(slotLabel) • AWAITING TELEMETRY...")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.gray)
+            }
         }
         .padding()
         .containerBackground(for: .widget) {
@@ -205,14 +228,30 @@ struct DriverWidgetView: View {
     }
 }
 
+// Mini View for W, POD, DNF to keep code clean
+struct StatBlock: View {
+    let title: String
+    let value: Int
+    
+    var body: some View {
+        VStack(alignment: .center, spacing: 0) {
+            Text(title)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(.gray)
+            Text("\(value)")
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+        }
+    }
+}
+
 // MARK: - Four Separate Widgets
 
 struct FavouriteDriver1Widget: Widget {
     let kind: String = "FavouriteDriver1Widget"
-
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Driver1Provider()) { entry in
-            DriverWidgetView(driver: entry.driver, slotLabel: "FAV 1")
+            DriverWidgetView(driver: entry.driver, stats: entry.stats, slotLabel: "FAV 1")
         }
         .configurationDisplayName("Favourite Driver 1")
         .description("Set your favourite driver in the F1 Widget app.")
@@ -222,10 +261,9 @@ struct FavouriteDriver1Widget: Widget {
 
 struct FavouriteDriver2Widget: Widget {
     let kind: String = "FavouriteDriver2Widget"
-
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Driver2Provider()) { entry in
-            DriverWidgetView(driver: entry.driver, slotLabel: "FAV 2")
+            DriverWidgetView(driver: entry.driver, stats: entry.stats, slotLabel: "FAV 2")
         }
         .configurationDisplayName("Favourite Driver 2")
         .description("Set your favourite driver in the F1 Widget app.")
@@ -235,10 +273,9 @@ struct FavouriteDriver2Widget: Widget {
 
 struct FavouriteDriver3Widget: Widget {
     let kind: String = "FavouriteDriver3Widget"
-
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Driver3Provider()) { entry in
-            DriverWidgetView(driver: entry.driver, slotLabel: "FAV 3")
+            DriverWidgetView(driver: entry.driver, stats: entry.stats, slotLabel: "FAV 3")
         }
         .configurationDisplayName("Favourite Driver 3")
         .description("Set your favourite driver in the F1 Widget app.")
@@ -248,10 +285,9 @@ struct FavouriteDriver3Widget: Widget {
 
 struct FavouriteDriver4Widget: Widget {
     let kind: String = "FavouriteDriver4Widget"
-
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Driver4Provider()) { entry in
-            DriverWidgetView(driver: entry.driver, slotLabel: "FAV 4")
+            DriverWidgetView(driver: entry.driver, stats: entry.stats, slotLabel: "FAV 4")
         }
         .configurationDisplayName("Favourite Driver 4")
         .description("Set your favourite driver in the F1 Widget app.")

@@ -14,6 +14,8 @@
 		F4975A912FEBFA4400E8DA3C /* F1Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4975A8F2FEBF8BA00E8DA3C /* F1Model.swift */; };
 		F4975A9E2FEDB5FB00E8DA3C /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4975A9D2FEDB5F400E8DA3C /* FavoritesManager.swift */; };
 		F4975A9F2FEDB5FB00E8DA3C /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4975A9D2FEDB5F400E8DA3C /* FavoritesManager.swift */; };
+		F4975AA72FEDEB2A00E8DA3C /* DriverService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4975AA62FEDEB2400E8DA3C /* DriverService.swift */; };
+		F4975AA82FEDEB2A00E8DA3C /* DriverService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4975AA62FEDEB2400E8DA3C /* DriverService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +50,7 @@
 		F4975A8F2FEBF8BA00E8DA3C /* F1Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = F1Model.swift; sourceTree = "<group>"; };
 		F4975A9D2FEDB5F400E8DA3C /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		F4975AA02FEDB8E100E8DA3C /* F1WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = F1WidgetExtension.entitlements; sourceTree = "<group>"; };
+		F4975AA62FEDEB2400E8DA3C /* DriverService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -115,6 +118,7 @@
 				F4975A782FEBF85F00E8DA3C /* Frameworks */,
 				F4975A662FEBF74C00E8DA3C /* Products */,
 				F4975A8F2FEBF8BA00E8DA3C /* F1Model.swift */,
+				F4975AA62FEDEB2400E8DA3C /* DriverService.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -245,6 +249,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F4975AA82FEDEB2A00E8DA3C /* DriverService.swift in Sources */,
 				F4975A9E2FEDB5FB00E8DA3C /* FavoritesManager.swift in Sources */,
 				F4975A902FEBF8E100E8DA3C /* F1Model.swift in Sources */,
 			);
@@ -255,6 +260,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F4975A9F2FEDB5FB00E8DA3C /* FavoritesManager.swift in Sources */,
+				F4975AA72FEDEB2A00E8DA3C /* DriverService.swift in Sources */,
 				F4975A912FEBFA4400E8DA3C /* F1Model.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
