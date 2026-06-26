@@ -24,30 +24,14 @@ struct Provider: TimelineProvider {
     
     func getMappedImageName(for apiLocation: String) -> String {
         let mapping: [String: String] = [
-            "Sakhir": "Bahrain",
-            "Jeddah": "Jeddah",
-            "Melbourne": "Melbourne",
-            "Suzuka": "Suzuka",
-            "Shanghai": "Shanghai",
-            "Miami": "Miami",
-            "Imola": "Imola",
-            "Monaco": "Monaco",
-            "Montréal": "Montreal",
-            "Barcelona": "Barcelona",
-            "Madrid": "Madrid",
-            "Spielberg": "Spielberg",
-            "Silverstone": "Silverstone",
-            "Budapest": "Budapest",
-            "Spa-Francorchamps": "Spa",
-            "Zandvoort": "Zandvoort",
-            "Monza": "Monza",
-            "Baku": "Baku",
-            "Singapore": "Singapore",
-            "Austin": "Austin",
-            "Mexico City": "MexicoCity",
-            "São Paulo": "SaoPaulo",
-            "Las Vegas": "LasVegas",
-            "Lusail": "Lusail",
+            "Sakhir": "Bahrain", "Jeddah": "Jeddah", "Melbourne": "Melbourne",
+            "Suzuka": "Suzuka", "Shanghai": "Shanghai", "Miami": "Miami",
+            "Imola": "Imola", "Monaco": "Monaco", "Montréal": "Montreal",
+            "Barcelona": "Barcelona", "Madrid": "Madrid", "Spielberg": "Spielberg",
+            "Silverstone": "Silverstone", "Budapest": "Budapest", "Spa-Francorchamps": "Spa",
+            "Zandvoort": "Zandvoort", "Monza": "Monza", "Baku": "Baku",
+            "Singapore": "Singapore", "Austin": "Austin", "Mexico City": "MexicoCity",
+            "São Paulo": "SaoPaulo", "Las Vegas": "LasVegas", "Lusail": "Lusail",
             "Yas Island": "YasMarina"
         ]
         return mapping[apiLocation] ?? "Default"
@@ -78,7 +62,11 @@ struct Provider: TimelineProvider {
                                 weekendSchedule: weekendSessions,
                                 imageName: self.getMappedImageName(for: nextMeeting.circuitShortName ?? ""))
             
-            let timeline = Timeline(entries: [entry], policy: .after(now.addingTimeInterval(3600)))
+            // UPGRADE: Tell the widget to refresh exactly 1 minute AFTER this session starts
+            // so it can automatically switch to counting down to the NEXT session!
+            let refreshDate = nextSession?.startDate?.addingTimeInterval(60) ?? now.addingTimeInterval(3600)
+            let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
+            
             completion(timeline)
         }
     }
@@ -98,7 +86,7 @@ struct F1WidgetEntryView : View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.gpName.uppercased())
                     .font(.system(size: 13, weight: .black, design: .default))
-                    .fontWidth(.compressed) // Makes the header look tighter and more aggressive
+                    .fontWidth(.compressed)
                     .italic()
                     .foregroundColor(rossoCorsa)
                     .lineLimit(1)
@@ -127,7 +115,7 @@ struct F1WidgetEntryView : View {
                                 
                                 Text(shortName(for: session.sessionName ?? "Session").uppercased())
                                     .font(.system(size: 10, weight: isTargetSession ? .black : .heavy))
-                                    .italic(isTargetSession) // Italicizes the active session
+                                    .italic(isTargetSession)
                                     .foregroundColor(isTargetSession ? rossoCorsa : .white)
                                 Spacer()
                                 Text(formatLocalTime(for: session.startDate))
@@ -142,41 +130,53 @@ struct F1WidgetEntryView : View {
             Spacer(minLength: 0)
             
             // RIGHT SIDE: High-Speed Countdown & Track Image
-            VStack(alignment: .trailing, spacing: 0) {
+            VStack(alignment: .trailing, spacing: 8) {
                 
                 // DYNAMIC RACING COUNTDOWN
                 if let targetDate = entry.targetSessionDate, let targetName = entry.targetSessionName {
-                    VStack(alignment: .trailing, spacing: -4) {
+                    VStack(alignment: .trailing, spacing: 0) {
                         Text("UNTIL \(shortName(for: targetName))")
                             .font(.system(size: 11, weight: .black, design: .default))
-                            .fontWidth(.compressed)
+                            .fontWidth(.expanded)
                             .italic()
                             .foregroundColor(rossoCorsa)
-                            .tracking(1.0)
+                            .tracking(0.5)
                         
-                        Text(formatCountdown(from: targetDate))
-                            // THE NEW FONT CONFIGURATION:
-                            .font(.system(size: 30, weight: .black, design: .default))
-                            .fontWidth(.compressed) // Condenses the width
-                            .italic() // Adds the "speed" slant
-                            .monospacedDigit() // Keeps the numbers from jittering
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.4)
+                        if targetDate > Date() {
+                            Text(targetDate, style: .timer)
+                                .font(.system(size: 30, weight: .black, design: .default))
+                                .fontWidth(.compressed)
+                                .italic()
+                                .monospacedDigit()
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.4)
+                                // 🛠️ ADD THESE TWO LINES:
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        } else {
+                            Text("LIVE")
+                                .font(.system(size: 34, weight: .black, design: .default))
+                                .fontWidth(.compressed)
+                                .italic()
+                                .foregroundColor(rossoCorsa)
+                        }
                     }
-                    .padding(.bottom, 6)
                 }
+                
+                Spacer(minLength: 0)
                 
                 // THE TRACK
                 Image(entry.imageName)
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 120, maxHeight: 100)
-                    .foregroundColor(rossoCorsa)
-                    .shadow(color: rossoCorsa.opacity(0.6), radius: 5, x: 0, y: 0)
+                    .frame(maxWidth: 100, maxHeight: 80)
+                    .foregroundColor(rossoCorsa.opacity(0.8))
+                    .shadow(color: rossoCorsa.opacity(0.4), radius: 3, x: 0, y: 0)
             }
-            .padding(.trailing, -5)
+            .padding(.trailing, 0)
+            .padding(.vertical, 2)
         }
         .containerBackground(for: .widget) {
             LinearGradient(gradient: Gradient(colors: [carbonBlack, .black]), startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -184,16 +184,7 @@ struct F1WidgetEntryView : View {
     }
     
     // --- Helpers ---
-    func formatCountdown(from date: Date) -> String {
-        let diff = Calendar.current.dateComponents([.day, .hour, .minute], from: Date(), to: date)
-        let days = diff.day ?? 0
-        let hours = diff.hour ?? 0
-        let minutes = diff.minute ?? 0
-        
-        if days <= 0 && hours <= 0 && minutes <= 0 { return "LIVE NOW" }
-        if days == 0 { return "\(hours)H \(minutes)M" }
-        return "\(days)D \(hours)H"
-    }
+    // (Removed formatCountdown since SwiftUI handles it natively now!)
     
     func formatLocalTime(for date: Date?) -> String {
         guard let date = date else { return "--:--" }
