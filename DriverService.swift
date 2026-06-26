@@ -52,6 +52,11 @@ class DriverService {
     let appGroupDefaults = UserDefaults(suiteName: "group.com.panda.f1widget")
     
     func updateChampionshipStandings() async throws {
+        appGroupDefaults?.removeObject(forKey: "cachedStandings")
+        appGroupDefaults?.removeObject(forKey: "lastProcessedSessionKey")
+        print("🧹 Cache purged! Recalculating everything from scratch...")
+
+
         print("📡 Checking for new Quali or Race data...")
         
         // UPGRADE: We now track the exact Session instead of the whole Meeting
@@ -68,7 +73,7 @@ class DriverService {
         let newSessions = allSessions.filter {
             ($0.startDate ?? Date.distantFuture) < now &&
             ($0.sessionKey ?? 0) > lastProcessedKey &&
-            ($0.sessionName == "Race" || $0.sessionName == "Qualifying")
+            ($0.sessionName == "Race" || $0.sessionName == "Qualifying" || $0.sessionName == "Sprint")
         }
         
         if newSessions.isEmpty {
@@ -116,7 +121,7 @@ class DriverService {
                 for result in results {
                     guard let driverNum = result.driverNumber, statsDict[driverNum] != nil else { continue }
                     
-                    // IF IT IS A SUNDAY RACE: Add Points, Wins, Podiums, DNFs
+                    // 1. IF IT IS A SUNDAY RACE: Add Points, Wins, Podiums, DNFs
                     if session.sessionName == "Race" {
                         statsDict[driverNum]?.points += result.points ?? 0.0
                         
@@ -128,7 +133,15 @@ class DriverService {
                             statsDict[driverNum]?.dnfs += 1
                         }
                     }
-                    // IF IT IS SATURDAY QUALIFYING: Check for Pole Position
+                    // 2. IF IT IS A SATURDAY SPRINT: Add Points and DNFs ONLY
+                    else if session.sessionName == "Sprint" {
+                        statsDict[driverNum]?.points += result.points ?? 0.0
+                        
+                        if result.dnf == true || result.dns == true {
+                            statsDict[driverNum]?.dnfs += 1
+                        }
+                    }
+                    // 3. IF IT IS QUALIFYING: Check for Pole Position
                     else if session.sessionName == "Qualifying" {
                         if let pos = result.position, pos == 1 {
                             statsDict[driverNum]?.poles += 1
