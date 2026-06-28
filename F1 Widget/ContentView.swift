@@ -7,6 +7,9 @@ struct ContentView: View {
     @State private var selectedDriver3: String = UserDefaults(suiteName: appGroupID)?.string(forKey: driver3Key) ?? "NOR"
     @State private var selectedDriver4: String = UserDefaults(suiteName: appGroupID)?.string(forKey: driver4Key) ?? "LEC"
 
+    @State private var selectedTeam1: String = UserDefaults(suiteName: appGroupID)?.string(forKey: team1Key) ?? "Ferrari"
+    @State private var selectedTeam2: String = UserDefaults(suiteName: appGroupID)?.string(forKey: team2Key) ?? "McLaren"
+
     let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
     let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
 
@@ -66,7 +69,37 @@ struct ContentView: View {
                         onSave: { save(code: selectedDriver4, key: driver4Key) }
                     )
 
-                    Text("Select your favourite drivers above,\nthen add the Driver Telemetry widgets to your home screen.")
+                    // Team section header
+                    VStack(spacing: 4) {
+                        Text("FAVOURITE TEAMS")
+                            .font(.system(size: 28, weight: .black))
+                            .fontWidth(.compressed)
+                            .italic()
+                            .foregroundColor(.white)
+
+                        Rectangle()
+                            .fill(LinearGradient(
+                                colors: [rossoCorsa, rossoCorsa.opacity(0.1)],
+                                startPoint: .leading, endPoint: .trailing))
+                            .frame(height: 2)
+                    }
+                    .padding(.top, 8)
+
+                    // Team Slot 1
+                    TeamSlotPicker(
+                        slotNumber: 1,
+                        selectedTeam: $selectedTeam1,
+                        onSave: { saveTeam(name: selectedTeam1, key: team1Key) }
+                    )
+
+                    // Team Slot 2
+                    TeamSlotPicker(
+                        slotNumber: 2,
+                        selectedTeam: $selectedTeam2,
+                        onSave: { saveTeam(name: selectedTeam2, key: team2Key) }
+                    )
+
+                    Text("Select your favourite drivers and teams above,\nthen add the widgets to your home screen.")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
@@ -100,6 +133,15 @@ struct ContentView: View {
         WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver2Widget")
         WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver3Widget")
         WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver4Widget")
+    }
+
+    func saveTeam(name: String, key: String) {
+        let defaults = UserDefaults(suiteName: appGroupID)
+        print("💾 Saving team \(name) to key \(key)")
+        defaults?.set(name, forKey: key)
+        defaults?.synchronize()
+        WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteTeam1Widget")
+        WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteTeam2Widget")
     }
 }
 
@@ -165,6 +207,69 @@ struct DriverSlotPicker: View {
             .frame(height: 120)
             .clipped()
             .onChange(of: selectedCode) { _, _ in
+                onSave()
+            }
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(14)
+    }
+}
+
+// MARK: - Team Picker Component
+
+struct TeamSlotPicker: View {
+    let slotNumber: Int
+    @Binding var selectedTeam: String
+    let onSave: () -> Void
+
+    let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
+
+    var teamColor: Color {
+        DriverInfo.teamColors[selectedTeam] ?? rossoCorsa
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+
+            // Slot label
+            Text("FAVOURITE TEAM \(slotNumber)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(rossoCorsa)
+                .tracking(2)
+
+            // Current selection preview
+            HStack {
+                Text(selectedTeam.uppercased())
+                    .font(.system(size: 18, weight: .black))
+                    .fontWidth(.compressed)
+                    .italic()
+                    .foregroundColor(teamColor)
+
+                Spacer()
+
+                // Small colour swatch for the team
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(teamColor)
+                    .frame(width: 28, height: 16)
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.05))
+            .cornerRadius(10)
+
+            // Picker
+            Picker("", selection: $selectedTeam) {
+                ForEach(TeamInfo.all, id: \.name) { team in
+                    Text(team.name)
+                        .foregroundColor(.white)
+                        .tag(team.name)
+                }
+            }
+            .pickerStyle(.wheel)
+            .colorScheme(.dark)
+            .frame(height: 120)
+            .clipped()
+            .onChange(of: selectedTeam) { _, _ in
                 onSave()
             }
         }

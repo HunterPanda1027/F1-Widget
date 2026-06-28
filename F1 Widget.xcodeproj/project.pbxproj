@@ -66,6 +66,7 @@
 			membershipExceptions = (
 				Assets.xcassets,
 				Driver.swift,
+				F1Widget.swift,
 				F1WidgetControl.swift,
 			);
 			target = F4975A642FEBF74C00E8DA3C /* F1 Widget */;

@@ -151,6 +151,7 @@ struct DriverWidgetView: View {
     let slotLabel: String
 
     @Environment(\.widgetFamily) var widgetFamily
+    @Environment(\.widgetContentMargins) private var widgetMargins
 
     private let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
 
@@ -272,7 +273,7 @@ struct DriverWidgetView: View {
                 .padding(.top, 6)
             }
         }
-        .padding(0)
+        .padding(widgetMargins)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -285,12 +286,12 @@ struct DriverWidgetView: View {
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(driver.name.uppercased())
-                        .font(.system(size: 18, weight: .black, design: .default))
-                        .fontWidth(.expanded)
+                        .font(.system(size: 28, weight: .black, design: .default))
+                        .fontWidth(.compressed)
                         .italic()
                         .foregroundColor(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
 
                     Text(driver.team.uppercased())
                         .font(.system(size: 10, weight: .black))
@@ -299,46 +300,30 @@ struct DriverWidgetView: View {
                         .lineLimit(1)
                 }
                 
-                Text("\(driver.number)")
-                    .font(.system(size: 32, weight: .black, design: .monospaced))
-                    .fontWidth(.compressed)
-                    .italic()
-                    .foregroundColor(driver.teamColor)
-                    .padding(.top, 4)
+                // POINTS (replaces the driver number)
+                Spacer(minLength: 5)
+
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(stats.map { String(format: "%g", $0.points) } ?? "–")
+                        .font(.system(size: 32, weight: .black, design: .monospaced))
+                        .fontWidth(.compressed)
+                        .italic()
+                        .foregroundColor(.white)
+                    Text("PTS")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(.gray)
+                }
 
                 Spacer(minLength: 5)
 
-                Rectangle()
-                    .fill(LinearGradient(
-                        colors: [driver.teamColor, driver.teamColor.opacity(0.1)],
-                        startPoint: .leading, endPoint: .trailing))
-                    .frame(height: 2)
-                    .padding(.vertical, 8) // Slightly more breathing room
-
-                // BOTTOM TELEMETRY DASHBOARD
+                // BOTTOM: just the stats (divider removed)
                 if let stats = stats {
-                    HStack(alignment: .bottom, spacing: 14) { // Increased spacing
-                        
-                        // Points Block
-                        VStack(alignment: .leading, spacing: -2) {
-                            Text("PTS")
-                                .font(.system(size: 11, weight: .black))
-                                .foregroundColor(driver.teamColor) // Colored label
-                            Text(String(format: "%g", stats.points))
-                                .font(.system(size: 24, weight: .black, design: .monospaced)) // Increased to 24
-                                .foregroundColor(.white)
-                        }
-                        .layoutPriority(1)
-                        
+                    HStack(spacing: 6) {
+                        StatBlock(title: "WIN", value: stats.wins, teamColor: driver.teamColor)
+                        StatBlock(title: "POD", value: stats.podiums, teamColor: driver.teamColor)
+                        StatBlock(title: "POLE", value: stats.poles, teamColor: driver.teamColor)
+                        StatBlock(title: "DNF", value: stats.dnfs, teamColor: driver.teamColor)
                         Spacer(minLength: 0)
-                        
-                        // Enhanced Minor Stats Grouping
-                        HStack(spacing: 6) {
-                            StatBlock(title: "W", value: stats.wins, teamColor: driver.teamColor)
-                            StatBlock(title: "POD", value: stats.podiums, teamColor: driver.teamColor)
-                            StatBlock(title: "POLE", value: stats.poles, teamColor: driver.teamColor)
-                            StatBlock(title: "DNF", value: stats.dnfs, teamColor: driver.teamColor)
-                        }
                     }
                 } else {
                     Text("\(slotLabel) • AWAITING...")
@@ -346,7 +331,8 @@ struct DriverWidgetView: View {
                         .foregroundColor(.gray)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(widgetMargins)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(alignment: .center) {
                 // Faint team-coloured logo behind the left-side content.
                 // Replace "f1_logo" with your actual asset name.
@@ -357,16 +343,42 @@ struct DriverWidgetView: View {
                     .foregroundColor(driver.teamColor)
                     .opacity(0.3)                     // faint
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(widgetMargins)           // inset to match the text margins
             }
             .padding(.trailing, 4)
 
-            // RIGHT COLUMN
-            Image(driver.code)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 140, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, -16)
-                .padding(.trailing, 0)
+            // RIGHT COLUMN — driver photo with the race number faint behind it
+            ZStack(alignment: .topTrailing) {
+                // Ghost race number — top-right, above the photo so it reads clearly
+                HStack(spacing: 0) {
+                    Text("\(driver.number)")
+                        .font(.system(size: 90, weight: .black))
+                        .fontWidth(.compressed)
+                        .italic()
+                        .foregroundColor(driver.teamColor.opacity(0.30))
+
+                    // Single-digit numbers get an invisible second digit so the
+                    // visible digit sits in the "tens" slot instead of the edge.
+                    if driver.number < 10 {
+                        Text("0")
+                            .font(.system(size: 90, weight: .black))
+                            .fontWidth(.compressed)
+                            .italic()
+                            .hidden()
+                    }
+                }
+                .fixedSize()
+                .offset(x: 8, y: -4)
+
+                Image(driver.code)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 160, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.top, 12)
+                    .padding(.bottom, 0)
+                    .offset(x: -16)
+            }
+            .frame(maxWidth: 160, maxHeight: .infinity, alignment: .bottom)
         }
     }}
 
@@ -416,6 +428,7 @@ struct FavouriteDriver1Widget: Widget {
         .configurationDisplayName("Favourite Driver 1")
         .description("Set your favourite driver in the F1 Widget app.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -428,6 +441,7 @@ struct FavouriteDriver2Widget: Widget {
         .configurationDisplayName("Favourite Driver 2")
         .description("Set your favourite driver in the F1 Widget app.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -440,6 +454,7 @@ struct FavouriteDriver3Widget: Widget {
         .configurationDisplayName("Favourite Driver 3")
         .description("Set your favourite driver in the F1 Widget app.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -452,5 +467,6 @@ struct FavouriteDriver4Widget: Widget {
         .configurationDisplayName("Favourite Driver 4")
         .description("Set your favourite driver in the F1 Widget app.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }

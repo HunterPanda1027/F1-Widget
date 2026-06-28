@@ -1,6 +1,41 @@
 import WidgetKit
 import SwiftUI
 
+// MARK: - Favourite Team support
+// NOTE: This block must be visible to BOTH the app and the widget extension,
+// exactly like your DriverInfo / appGroupID file. If `TeamInfo` or these keys
+// don't resolve in ContentView, tick this file's app-target membership in the
+// File Inspector, or move this block into your shared Driver model file.
+
+let team1Key = "selectedTeam1"
+let team2Key = "selectedTeam2"
+
+struct TeamInfo {
+    let name: String
+
+    // Colour reuses the same source of truth as the drivers.
+    var color: Color { DriverInfo.teamColors[name] ?? Color(red: 0.937, green: 0.102, blue: 0.176) }
+
+    // Logo asset name — add an image named after each team (e.g. "Ferrari",
+    // "McLaren", "Red Bull") to the widget extension's asset catalog.
+    var logoName: String { name }
+
+    // Explicit ordering so the picker is stable across launches.
+    static let all: [TeamInfo] = [
+        "Ferrari", "McLaren", "Mercedes", "Red Bull", "Aston Martin", "Alpine",
+        "Williams", "Racing Bulls", "Haas", "Audi", "Cadillac",
+    ].map { TeamInfo(name: $0) }
+
+    static func from(name: String) -> TeamInfo {
+        all.first { $0.name == name } ?? all[0]
+    }
+
+    static func fromKey(_ key: String) -> TeamInfo {
+        let name = UserDefaults(suiteName: appGroupID)?.string(forKey: key) ?? "Ferrari"
+        return from(name: name)
+    }
+}
+
 // 1. The Timeline Entry
 struct F1Entry: TimelineEntry {
     let date: Date
@@ -19,7 +54,35 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (F1Entry) -> ()) {
-        completion(F1Entry(date: Date(), gpName: "F1 Grand Prix", locationName: "Circuit", targetSessionName: "Race", targetSessionDate: Date().addingTimeInterval(86400), weekendSchedule: [], imageName: "Default"))
+        let now = Date()
+        let defaults = UserDefaults(suiteName: appGroupID)
+
+        // Prefer the last cached weekend so the snapshot shows real telemetry
+        // instead of an empty schedule.
+        if let meetingData = defaults?.data(forKey: "backup_cached_meeting"),
+           let meeting = try? JSONDecoder().decode(F1Meeting.self, from: meetingData) {
+
+            var sessions: [F1Session] = []
+            if let sessionsData = defaults?.data(forKey: "backup_cached_sessions"),
+               let decoded = try? JSONDecoder().decode([F1Session].self, from: sessionsData) {
+                sessions = decoded
+            }
+
+            let nextSession = sessions.first { ($0.startDate ?? .distantPast).addingTimeInterval(7200) > now }
+
+            completion(F1Entry(
+                date: now,
+                gpName: meeting.meetingName ?? "F1 Grand Prix",
+                locationName: meeting.circuitShortName ?? "Circuit",
+                targetSessionName: nextSession?.sessionName,
+                targetSessionDate: nextSession?.startDate,
+                weekendSchedule: sessions,
+                imageName: getMappedImageName(for: meeting.circuitShortName ?? "")
+            ))
+        } else {
+            // No cache yet — original placeholder-style snapshot.
+            completion(F1Entry(date: Date(), gpName: "F1 Grand Prix", locationName: "Circuit", targetSessionName: "Race", targetSessionDate: Date().addingTimeInterval(86400), weekendSchedule: [], imageName: "Default"))
+        }
     }
     
     func getMappedImageName(for apiLocation: String) -> String {
@@ -174,59 +237,17 @@ struct Provider: TimelineProvider {
 // 3. The View (Polished Telemetry Typography)
 struct F1WidgetEntryView : View {
     var entry: F1Entry
+    var teamKey: String? = nil   // nil → original Ferrari-red countdown widget
 
     let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
     let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
 
+    // Team theming — only resolved when a teamKey is supplied.
+    private var team: TeamInfo? { teamKey.map { TeamInfo.fromKey($0) } }
+    private var themeColor: Color { team?.color ?? rossoCorsa }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            
-            // LEFT SIDE: Text and Schedule
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.gpName.uppercased())
-                    .font(.system(size: 16, weight: .black, design: .default))
-                    .fontWidth(.compressed)
-                    .italic()
-                    .foregroundColor(rossoCorsa)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                
-                Text(entry.locationName.uppercased())
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.9))
-                    .tracking(1.5)
-                    .lineLimit(1)
-                
-                Rectangle()
-                    .fill(LinearGradient(gradient: Gradient(colors: [rossoCorsa, rossoCorsa.opacity(0.1)]), startPoint: .leading, endPoint: .trailing))
-                    .frame(height: 2)
-                    .padding(.vertical, 4)
-                
-                if entry.weekendSchedule.isEmpty {
-                    Text("AWAITING TELEMETRY...")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.8))
-                } else {
-                    VStack(spacing: 5) {
-                        ForEach(entry.weekendSchedule.prefix(5)) { session in
-                            HStack {
-                                let isTargetSession = session.sessionName == entry.targetSessionName
-                                
-                                Text(shortName(for: session.sessionName ?? "Session").uppercased())
-                                    .font(.system(size: 10, weight: isTargetSession ? .black : .heavy))
-                                    .italic(isTargetSession)
-                                    .foregroundColor(isTargetSession ? rossoCorsa : .white)
-                                Spacer()
-                                Text(formatLocalTime(for: session.startDate))
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundColor(isTargetSession ? .white : .gray)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            Spacer(minLength: 0)
             
             // RIGHT SIDE: Large Background Track, Large Telemetry Overlay
             ZStack(alignment: .bottomLeading) {
@@ -237,7 +258,7 @@ struct F1WidgetEntryView : View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .foregroundColor(rossoCorsa.opacity(0.8))
+                    .foregroundColor(themeColor.opacity(0.8))
                     .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                     .padding(.bottom, 25) // Pushes the track map up
                     .padding(.trailing, 5)
@@ -293,7 +314,7 @@ struct F1WidgetEntryView : View {
                                     .font(.system(size: 11, weight: .black, design: .default))
                                     .fontWidth(.expanded)
                                     .italic()
-                                    .foregroundColor(rossoCorsa)
+                                    .foregroundColor(themeColor)
                                     .padding(.trailing, 4)
                             }
                             .frame(maxWidth: .infinity)
@@ -326,10 +347,81 @@ struct F1WidgetEntryView : View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Spacer(minLength: 0)
+
+            // LEFT SIDE: Text and Schedule
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.gpName.uppercased())
+                    .font(.system(size: 20, weight: .black, design: .default))
+                    .fontWidth(.compressed)
+                    .italic()
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                
+                Text(entry.locationName.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.9))
+                    .tracking(1.5)
+                    .lineLimit(1)
+                
+                Rectangle()
+                    .fill(LinearGradient(gradient: Gradient(colors: [themeColor, themeColor.opacity(0.1)]), startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 2)
+                    .padding(.vertical, 4)
+                
+                if entry.weekendSchedule.isEmpty {
+                    Text("AWAITING TELEMETRY...")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.8))
+                } else {
+                    VStack(spacing: 5) {
+                        ForEach(entry.weekendSchedule.prefix(5)) { session in
+                            HStack {
+                                let isTargetSession = session.sessionName == entry.targetSessionName
+                                
+                                Text(shortName(for: session.sessionName ?? "Session").uppercased())
+                                    .font(.system(size: 10, weight: isTargetSession ? .black : .heavy))
+                                    .italic(isTargetSession)
+                                    .foregroundColor(isTargetSession ? themeColor : .white)
+                                Spacer()
+                                Text(formatLocalTime(for: session.startDate))
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(isTargetSession ? .white : .gray)
+                            }
+                        }
+                    }
+                }
+            }
+            .background(alignment: .center) {
+                // Faint, team-coloured logo behind the left-side schedule —
+                // mirrors the driver widgets. Only shown on the team widgets.
+                if let team {
+                    Image(team.logoName)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(themeColor)
+                        .opacity(0.3)
+                        .padding(8)
+                }
+            }
         }
         .containerBackground(for: .widget) {
-            LinearGradient(gradient: Gradient(colors: [carbonBlack, .black]), startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
+                    ZStack {
+                        LinearGradient(gradient: Gradient(colors: [carbonBlack, .black]), startPoint: .topLeading, endPoint: .bottomTrailing)
+         
+                        // Team-coloured wash. Always present (no conditional view in
+                        // the container background), fully transparent when there's
+                        // no team so the default widget looks like the original.
+                        LinearGradient(
+                            gradient: Gradient(colors: [themeColor.opacity(team == nil ? 0.0 : 0.2), .clear]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                }
     }
     
     // --- Helpers ---
@@ -364,6 +456,31 @@ struct F1Widget: Widget {
         }
         .configurationDisplayName("Scuderia Tracker")
         .description("Live telemetry and schedules for the Grand Prix.")
+        .supportedFamilies([.systemMedium])
+    }
+}
+
+// 5. Team-themed countdown widgets — same race data, your team's colours + logo.
+struct FavouriteTeam1Widget: Widget {
+    let kind: String = "FavouriteTeam1Widget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            F1WidgetEntryView(entry: entry, teamKey: team1Key)
+        }
+        .configurationDisplayName("Team Tracker 1")
+        .description("Grand Prix countdown in your favourite team's colours.")
+        .supportedFamilies([.systemMedium])
+    }
+}
+
+struct FavouriteTeam2Widget: Widget {
+    let kind: String = "FavouriteTeam2Widget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            F1WidgetEntryView(entry: entry, teamKey: team2Key)
+        }
+        .configurationDisplayName("Team Tracker 2")
+        .description("Grand Prix countdown in your favourite team's colours.")
         .supportedFamilies([.systemMedium])
     }
 }
