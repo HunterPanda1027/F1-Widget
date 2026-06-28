@@ -25,12 +25,12 @@ struct DriverInfo {
         "Mercedes":      Color(red: 0.0,   green: 0.765, blue: 0.659),
         "Red Bull":      Color(red: 0.12,  green: 0.24,  blue: 0.71),
         "Aston Martin":  Color(red: 0.0,   green: 0.467, blue: 0.376),
-        "Alpine":        Color(red: 0.0,   green: 0.408, blue: 0.831),
+        "Alpine":        Color(red: 1.0, green: 0.53, blue: 0.820),
         "Williams":      Color(red: 0.0,   green: 0.459, blue: 0.843),
         "Racing Bulls":  Color(red: 0.38,  green: 0.0,   blue: 0.82),
         "Haas":          Color(red: 0.9,   green: 0.15,  blue: 0.15),
-        "Audi":          Color(red: 0.87,  green: 0.71,  blue: 0.0),
-        "Cadillac":      Color(red: 0.0,   green: 0.545, blue: 0.918),
+        "Audi":          Color(red: 0.961, green: 0.020, blue: 0.216),
+        "Cadillac":      Color(red: 1.0,   green: 1.0, blue: 1.0),
     ]
 
     static let all: [DriverInfo] = [
@@ -69,17 +69,16 @@ struct DriverInfo {
 }
 
 // MARK: - Timeline Entry
-// Unified entry for all 4 widgets!
 struct DriverEntry: TimelineEntry {
     let date: Date
     let driver: DriverInfo
-    let stats: DriverStats? // NEW: Holds the fetched stats
+    let stats: DriverStats?
 }
 
 // MARK: - Helper to fetch stats
 func getStatsFor(driver: DriverInfo) -> DriverStats? {
     let allStats = DriverService.shared.getCachedStandings()
-    return allStats.first { $0.driverNumber == driver.number }
+    return allStats.first { $0.nameAcronym.uppercased() == driver.code }
 }
 
 // MARK: - Providers
@@ -151,98 +150,258 @@ struct DriverWidgetView: View {
     let stats: DriverStats?
     let slotLabel: String
 
+    @Environment(\.widgetFamily) var widgetFamily
+
     private let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
 
     var body: some View {
+        Group {
+            if widgetFamily == .systemSmall {
+                smallWidgetLayout
+            } else {
+                mediumWidgetLayout
+            }
+        }
+        .containerBackground(for: .widget) {
+            if widgetFamily == .systemSmall {
+                // Background art lives here so it fills edge-to-edge and is
+                // clipped to the widget bounds.
+                ZStack {
+                    carbonBlack
+
+                    // Driver photo — fills the whole widget, clearer than before
+                    Image(driver.code)
+                        .resizable()
+                        .scaledToFit()
+                        .opacity(0.70)
+
+                    // Legibility gradient: a touch of team colour up top, mostly
+                    // clear through the middle (so the photo shows), deep black at
+                    // the bottom where the stats sit.
+                    LinearGradient(
+                        stops: [
+                            .init(color: driver.teamColor.opacity(0.30), location: 0.0),
+                            .init(color: .black.opacity(0.25),           location: 0.40),
+                            .init(color: .black.opacity(0.92),           location: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+
+                    // Ghost race number — fixed size so every driver looks the same
+                    Text("\(driver.number)")
+                        .font(.system(size: 100, weight: .black))
+                        .fontWidth(.compressed)
+                        .italic()
+                        .foregroundColor(driver.teamColor.opacity(0.30))
+                        .fixedSize()                       // never shrink → consistent glyphs
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .offset(x: 8, y: 6)
+                        .clipped()
+                }
+            } else {
+                ZStack {
+                    carbonBlack
+
+                    RadialGradient(
+                        gradient: Gradient(colors: [driver.teamColor.opacity(0.25), .clear]),
+                        center: .trailing,
+                        startRadius: 10,
+                        endRadius: 180
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - SMALL LAYOUT
+    // Foreground content only — the image and gradient are in the
+    // containerBackground above.
+    var smallWidgetLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // TOP HEADER: Name and Number
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(driver.name.uppercased())
-                        .font(.system(size: 20, weight: .black, design: .default))
+            // Header
+            Text(driver.name.uppercased())
+                .font(.system(size: 22, weight: .black))
+                .fontWidth(.compressed)
+                .italic()
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+
+            Text(driver.team.uppercased())
+                .font(.system(size: 11, weight: .black))
+                .tracking(1)
+                .foregroundColor(driver.teamColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+            // Team accent bar
+            RoundedRectangle(cornerRadius: 2)
+                .fill(driver.teamColor)
+                .frame(width: 42, height: 3.5)
+                .padding(.top, 6)
+
+            Spacer(minLength: 4)
+
+            // Stats
+            if let stats = stats {
+                // Hero: points on its own line
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(String(format: "%g", stats.points))
+                        .font(.system(size: 56, weight: .black))
                         .fontWidth(.compressed)
                         .italic()
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
+                    Text("PTS")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(.gray)
+                }
+
+                // Secondary stats below — bigger pills
+                HStack(spacing: 7) {
+                    StatBlock(title: "WIN", value: stats.wins, teamColor: driver.teamColor,
+                              titleSize: 12, valueSize: 16, minWidth: 30, vPadding: 7)
+                    StatBlock(title: "POD", value: stats.podiums, teamColor: driver.teamColor,
+                              titleSize: 12, valueSize: 16, minWidth: 30, vPadding: 7)
+                    StatBlock(title: "POLE", value: stats.poles, teamColor: driver.teamColor,
+                              titleSize: 12, valueSize: 16, minWidth: 30, vPadding: 7)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 6)
+            }
+        }
+        .padding(0)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - MEDIUM LAYOUT
+    var mediumWidgetLayout: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            
+            // LEFT COLUMN
+            VStack(alignment: .leading, spacing: 0) {
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(driver.name.uppercased())
+                        .font(.system(size: 18, weight: .black, design: .default))
+                        .fontWidth(.expanded)
+                        .italic()
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.5)
 
                     Text(driver.team.uppercased())
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .black))
                         .foregroundColor(driver.teamColor)
                         .tracking(1.5)
                         .lineLimit(1)
                 }
-                Spacer()
+                
                 Text("\(driver.number)")
-                    .font(.system(size: 38, weight: .black, design: .monospaced))
+                    .font(.system(size: 32, weight: .black, design: .monospaced))
                     .fontWidth(.compressed)
                     .italic()
                     .foregroundColor(driver.teamColor)
-            }
+                    .padding(.top, 4)
 
-            Spacer(minLength: 5)
+                Spacer(minLength: 5)
 
-            Rectangle()
-                .fill(LinearGradient(
-                    colors: [driver.teamColor, driver.teamColor.opacity(0.1)],
-                    startPoint: .leading, endPoint: .trailing))
-                .frame(height: 2)
-                .padding(.vertical, 4)
+                Rectangle()
+                    .fill(LinearGradient(
+                        colors: [driver.teamColor, driver.teamColor.opacity(0.1)],
+                        startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 2)
+                    .padding(.vertical, 8) // Slightly more breathing room
 
-            // BOTTOM TELEMETRY: Stats Array
-            if let stats = stats {
-                HStack(alignment: .bottom, spacing: 12) {
-                    // Points
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("PTS")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.gray)
-                        Text(String(format: "%g", stats.points)) // %g drops trailing zeros (e.g., 25.0 -> 25)
-                            .font(.system(size: 16, weight: .black, design: .monospaced))
-                            .foregroundColor(.white)
+                // BOTTOM TELEMETRY DASHBOARD
+                if let stats = stats {
+                    HStack(alignment: .bottom, spacing: 14) { // Increased spacing
+                        
+                        // Points Block
+                        VStack(alignment: .leading, spacing: -2) {
+                            Text("PTS")
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundColor(driver.teamColor) // Colored label
+                            Text(String(format: "%g", stats.points))
+                                .font(.system(size: 24, weight: .black, design: .monospaced)) // Increased to 24
+                                .foregroundColor(.white)
+                        }
+                        .layoutPriority(1)
+                        
+                        Spacer(minLength: 0)
+                        
+                        // Enhanced Minor Stats Grouping
+                        HStack(spacing: 6) {
+                            StatBlock(title: "W", value: stats.wins, teamColor: driver.teamColor)
+                            StatBlock(title: "POD", value: stats.podiums, teamColor: driver.teamColor)
+                            StatBlock(title: "POLE", value: stats.poles, teamColor: driver.teamColor)
+                            StatBlock(title: "DNF", value: stats.dnfs, teamColor: driver.teamColor)
+                        }
                     }
-                    
-                    Spacer()
-                    
-                    // Minor Stats Grouping
-                    HStack(spacing: 8) {
-                        StatBlock(title: "W", value: stats.wins)
-                        StatBlock(title: "POD", value: stats.podiums)
-                        StatBlock(title: "POLE", value: stats.poles)
-                        StatBlock(title: "DNF", value: stats.dnfs)
-                    }
+                } else {
+                    Text("\(slotLabel) • AWAITING...")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.gray)
                 }
-            } else {
-                Text("\(slotLabel) • AWAITING TELEMETRY...")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.gray)
             }
-        }
-        .padding()
-        .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [carbonBlack, .black],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-}
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(alignment: .center) {
+                // Faint team-coloured logo behind the left-side content.
+                // Replace "f1_logo" with your actual asset name.
+                Image(driver.team)
+                    .resizable()
+                    .renderingMode(.template)          // lets us tint it
+                    .scaledToFit()
+                    .foregroundColor(driver.teamColor)
+                    .opacity(0.3)                     // faint
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.trailing, 4)
 
-// Mini View for W, POD, DNF to keep code clean
+            // RIGHT COLUMN
+            Image(driver.code)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 140, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, -16)
+                .padding(.trailing, 0)
+        }
+    }}
+
+// MARK: - Redesigned Telemetry Stat Block
 struct StatBlock: View {
     let title: String
     let value: Int
+    let teamColor: Color // Added to support styling
+
+    // Sizing knobs — defaults keep the medium layout exactly as before.
+    var titleSize: CGFloat = 9
+    var valueSize: CGFloat = 16
+    var minWidth: CGFloat = 27
+    var vPadding: CGFloat = 4
     
     var body: some View {
-        VStack(alignment: .center, spacing: 0) {
+        VStack(alignment: .center, spacing: 2) {
             Text(title)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.gray)
+                .font(.system(size: titleSize, weight: .black))
+                .foregroundColor(.white.opacity(0.8))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            
             Text("\(value)")
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(.system(size: valueSize, weight: .black, design: .monospaced))
                 .foregroundColor(.white)
         }
+        .padding(.vertical, vPadding)
+        .frame(minWidth: minWidth)
+        .background(Color.white.opacity(0.05)) // Subtle glass pill background
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(teamColor.opacity(0.3), lineWidth: 1) // Dynamic subtle border
+        )
     }
 }
 

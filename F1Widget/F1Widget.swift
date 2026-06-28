@@ -44,6 +44,7 @@ struct Provider: TimelineProvider {
                 
                 var nextMeeting: F1Meeting? = nil
                 var weekendSessions: [F1Session] = []
+                var apiIsBlocked = false
                 
                 do {
                     // 1. Attempt to fetch fresh data from the network
@@ -61,6 +62,7 @@ struct Provider: TimelineProvider {
                     }
                 } catch {
                     print("🌐 API Request failed or restricted during live session. Attempting cache fallback...")
+                    apiIsBlocked = true
                 }
                 
                 // 2. FALLBACK LAYER: If network failed, look for the last known good data in the cache
@@ -76,23 +78,80 @@ struct Provider: TimelineProvider {
                     }
                 }
                 
-                // 3. CONSTRUCT TIMELINE (Whether it came from network or cache)
+                // 3. CONSTRUCT TIMELINE
                 if let meeting = nextMeeting {
-                    let nextSession = weekendSessions.first { ($0.startDate ?? Date.distantPast) > now }
                     
-                    let entry = F1Entry(
-                        date: now,
-                        gpName: meeting.meetingName ?? "Unknown GP",
-                        locationName: meeting.circuitShortName ?? "Unknown Location",
-                        targetSessionName: nextSession?.sessionName,
-                        targetSessionDate: nextSession?.startDate,
-                        weekendSchedule: weekendSessions,
-                        imageName: self.getMappedImageName(for: meeting.circuitShortName ?? "")
-                    )
+                    let liveWindowDuration: TimeInterval = apiIsBlocked ? 18000 : 7200
                     
-                    // Refresh 1 minute after this session starts to transition cleanly
+                    let nextSession = weekendSessions.first { session in
+                        let sessionStart = session.startDate ?? Date.distantPast
+                        let sessionEnd = sessionStart.addingTimeInterval(liveWindowDuration)
+                        return sessionEnd > now
+                    }
+                    
+                    var entries: [F1Entry] = []
+                    
+                    if let targetDate = nextSession?.startDate {
+                        let oneHourBefore = targetDate.addingTimeInterval(-3600)
+                        var currentUpdate = now
+                        
+                        // Generate an entry every minute until the 1-hour mark
+                        while currentUpdate < oneHourBefore && entries.count < 60 {
+                            entries.append(F1Entry(
+                                date: currentUpdate,
+                                gpName: meeting.meetingName ?? "Unknown GP",
+                                locationName: meeting.circuitShortName ?? "Unknown Location",
+                                targetSessionName: nextSession?.sessionName,
+                                targetSessionDate: nextSession?.startDate,
+                                weekendSchedule: weekendSessions,
+                                imageName: self.getMappedImageName(for: meeting.circuitShortName ?? "")
+                            ))
+                            currentUpdate = currentUpdate.addingTimeInterval(60)
+                        }
+                        
+                        // Add the crucial entry for exactly 1 hour before
+                        if oneHourBefore > now {
+                            entries.append(F1Entry(
+                                date: oneHourBefore,
+                                gpName: meeting.meetingName ?? "Unknown GP",
+                                locationName: meeting.circuitShortName ?? "Unknown Location",
+                                targetSessionName: nextSession?.sessionName,
+                                targetSessionDate: nextSession?.startDate,
+                                weekendSchedule: weekendSessions,
+                                imageName: self.getMappedImageName(for: meeting.circuitShortName ?? "")
+                            ))
+                        }
+                        
+                        // 🚨 CRITICAL FIX: Prevent the Empty Array Freeze 🚨
+                        // If we are already within 1 hour, or already LIVE, the array will be empty.
+                        // We MUST append an entry for 'now' so the widget updates to LIVE or native Timer.
+                        if entries.isEmpty {
+                            entries.append(F1Entry(
+                                date: now,
+                                gpName: meeting.meetingName ?? "Unknown GP",
+                                locationName: meeting.circuitShortName ?? "Unknown Location",
+                                targetSessionName: nextSession?.sessionName,
+                                targetSessionDate: nextSession?.startDate,
+                                weekendSchedule: weekendSessions,
+                                imageName: self.getMappedImageName(for: meeting.circuitShortName ?? "")
+                            ))
+                        }
+                        
+                    } else {
+                        // Fallback if no target date
+                        entries.append(F1Entry(
+                            date: now,
+                            gpName: meeting.meetingName ?? "Unknown GP",
+                            locationName: meeting.circuitShortName ?? "Unknown Location",
+                            targetSessionName: nil,
+                            targetSessionDate: nil,
+                            weekendSchedule: weekendSessions,
+                            imageName: self.getMappedImageName(for: meeting.circuitShortName ?? "")
+                        ))
+                    }
+                    
                     let refreshDate = nextSession?.startDate?.addingTimeInterval(60) ?? now.addingTimeInterval(3600)
-                    let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
+                    let timeline = Timeline(entries: entries, policy: .after(refreshDate))
                     completion(timeline)
                     return
                 }
@@ -125,7 +184,7 @@ struct F1WidgetEntryView : View {
             // LEFT SIDE: Text and Schedule
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.gpName.uppercased())
-                    .font(.system(size: 13, weight: .black, design: .default))
+                    .font(.system(size: 16, weight: .black, design: .default))
                     .fontWidth(.compressed)
                     .italic()
                     .foregroundColor(rossoCorsa)
@@ -169,54 +228,104 @@ struct F1WidgetEntryView : View {
             
             Spacer(minLength: 0)
             
-            // RIGHT SIDE: High-Speed Countdown & Track Image
-            VStack(alignment: .trailing, spacing: 8) {
+            // RIGHT SIDE: Large Background Track, Large Telemetry Overlay
+            ZStack(alignment: .bottomLeading) {
                 
-                // DYNAMIC RACING COUNTDOWN
-                if let targetDate = entry.targetSessionDate, let targetName = entry.targetSessionName {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("UNTIL \(shortName(for: targetName))")
-                            .font(.system(size: 11, weight: .black, design: .default))
-                            .fontWidth(.expanded)
-                            .italic()
-                            .foregroundColor(rossoCorsa)
-                            .tracking(0.5)
-                        
-                        if targetDate > Date() {
-                            Text(targetDate, style: .timer)
-                                .font(.system(size: 30, weight: .black, design: .default))
-                                .fontWidth(.compressed)
-                                .italic()
-                                .monospacedDigit()
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.4)
-                                // 🛠️ ADD THESE TWO LINES:
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                        } else {
-                            Text("LIVE")
-                                .font(.system(size: 34, weight: .black, design: .default))
-                                .fontWidth(.compressed)
-                                .italic()
-                                .foregroundColor(rossoCorsa)
-                        }
-                    }
-                }
-                
-                Spacer(minLength: 0)
-                
-                // THE TRACK
+                // 1. BACKGROUND TRACK (Pushed up slightly)
                 Image(entry.imageName)
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 100, maxHeight: 80)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .foregroundColor(rossoCorsa.opacity(0.8))
-                    .shadow(color: rossoCorsa.opacity(0.4), radius: 3, x: 0, y: 0)
+                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    .padding(.bottom, 25) // Pushes the track map up
+                    .padding(.trailing, 5)
+                
+                // TELEMETRY BAR (Expanded to fill the space)
+                if let targetDate = entry.targetSessionDate, let targetName = entry.targetSessionName {
+                    VStack(alignment: .leading, spacing: 0) {
+                        
+                        // 1. THE BIG TIMER
+                        if targetDate > entry.date {
+                            let timeRemaining = targetDate.timeIntervalSince(entry.date)
+                            
+                            if timeRemaining > 3600 {
+                                // 🟢 MORE THAN 1 HOUR: Manual HH:mm format
+                                let hours = Int(timeRemaining) / 3600
+                                let minutes = (Int(timeRemaining) % 3600) / 60
+                                
+                                Text("\(hours):\(String(format: "%02d", minutes))")
+                                    .font(.system(size: 46, weight: .black, design: .monospaced))
+                                    .fontWidth(.compressed)
+                                    .italic()
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black, radius: 0.1, x: 1, y: 0)
+                                    .shadow(color: .black, radius: 0.1, x: -1, y: 0)
+                                    .shadow(color: .black, radius: 0.1, x: 0, y: 1)
+                                    .shadow(color: .black, radius: 0.1, x: 0, y: -1)
+                            } else {
+                                // 🔴 LESS THAN 1 HOUR: Native Timer (MM:ss)
+                                Text(targetDate, style: .timer)
+                                    .font(.system(size: 46, weight: .black, design: .monospaced))
+                                    .fontWidth(.compressed)
+                                    .italic()
+                                    .monospacedDigit()
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black, radius: 0.1, x: 1, y: 0)
+                                    .shadow(color: .black, radius: 0.1, x: -1, y: 0)
+                                    .shadow(color: .black, radius: 0.1, x: 0, y: 1)
+                                    .shadow(color: .black, radius: 0.1, x: 0, y: -1)
+                            }
+                        } else {
+                            Text("LIVE")
+                                .font(.system(size: 46, weight: .black, design: .monospaced))
+                                .fontWidth(.compressed)
+                                .italic()
+                                .foregroundColor(.white)
+                        }
+                        
+                        // 2. THE "UNTIL" LABEL
+                        if targetDate > entry.date {
+                            HStack(spacing: 0) {
+                                Spacer()
+                                Text("UNTIL \(shortName(for: targetName))".uppercased())
+                                    .font(.system(size: 11, weight: .black, design: .default))
+                                    .fontWidth(.expanded)
+                                    .italic()
+                                    .foregroundColor(rossoCorsa)
+                                    .padding(.trailing, 4)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.leading, 2)
+                    .padding(.bottom, 2)
+                } else {
+                    // STANDBY STATE
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("STANDBY")
+                            .font(.system(size: 46, weight: .black, design: .monospaced))
+                            .fontWidth(.compressed)
+                            .italic()
+                            .foregroundColor(.gray.opacity(0.3))
+                        
+                        HStack(spacing: 0) {
+                            Spacer()
+                            Text("AWAITING NEXT EVENT")
+                                .font(.system(size: 11, weight: .black, design: .default))
+                                .fontWidth(.expanded)
+                                .italic()
+                                .foregroundColor(.gray.opacity(0.5))
+                                .padding(.trailing, 4)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.leading, 2)
+                    .padding(.bottom, 2)
+                }
             }
-            .padding(.trailing, 0)
-            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .containerBackground(for: .widget) {
             LinearGradient(gradient: Gradient(colors: [carbonBlack, .black]), startPoint: .topLeading, endPoint: .bottomTrailing)

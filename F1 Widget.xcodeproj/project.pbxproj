@@ -64,6 +64,7 @@
 		F4975A952FEDA63C00E8DA3C /* Exceptions for "F1Widget" folder in "F1 Widget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Assets.xcassets,
 				Driver.swift,
 				F1WidgetControl.swift,
 			);

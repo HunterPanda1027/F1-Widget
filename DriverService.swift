@@ -17,6 +17,7 @@ struct F1Driver: Codable, Identifiable {
 }
 
 struct F1Result: Codable {
+    let nameAcronym: String?
     let driverNumber: Int?
     let position: Int?
     let points: Double?
@@ -24,6 +25,7 @@ struct F1Result: Codable {
     let dns: Bool?
     
     enum CodingKeys: String, CodingKey {
+        case nameAcronym = "name_acronym"
         case driverNumber = "driver_number"
         case position
         case points
@@ -47,11 +49,12 @@ struct DriverStats: Codable, Identifiable {
 
 // --- 2. The Service ---
 class DriverService {
+    
     static let shared = DriverService()
     let appGroupDefaults = UserDefaults(suiteName: "group.com.panda.f1widget")
     
     func updateChampionshipStandings() async throws {
-        
+
         // 🚨 Fetch the last processed session key so we don't recalculate the whole season!
         // (If you ever need to force a reset, temporarily change this to: let lastProcessedKey = 0)
         let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 0  //appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ??
@@ -96,7 +99,7 @@ class DriverService {
         let newSessions = allSessions.filter {
             ($0.startDate ?? Date.distantFuture) < Date() &&
             ($0.sessionKey ?? 0) > lastProcessedKey &&
-            ["Race", "Sprint"].contains($0.sessionName ?? "")
+            ["Race", "Sprint", "Qualifying"].contains($0.sessionName ?? "")
         }
         
         // 🏁 If there are no new races to process, stop here and leave the cache alone!
@@ -116,31 +119,81 @@ class DriverService {
                   let resultsUrl = URL(string: "https://api.openf1.org/v1/session_result?session_key=\(sessionKey)") else { continue }
             
             do {
-                let (resultData, _) = try await URLSession.shared.data(from: resultsUrl)
+                // 🚨 CHANGED: Saved the 'response' here to check HTTP status codes
+                let (resultData, response) = try await URLSession.shared.data(from: resultsUrl)
+                
+                // 🚨 NEW: Check if the API returned a 200 OK status. If not, skip decoding.
+                if let httpRes = response as? HTTPURLResponse, httpRes.statusCode != 200 {
+                    print("ℹ️ Session \(sessionKey) results not available yet (HTTP \(httpRes.statusCode)).")
+                    continue
+                }
+                
+                // 🚨 NEW: Peek at the JSON payload. If it's a Dictionary (starts with '{'), skip it!
+                if let jsonDict = try? JSONSerialization.jsonObject(with: resultData) as? [String: Any] {
+                    print("ℹ️ API returned a message structure instead of results for session \(sessionKey): \(jsonDict)")
+                    continue
+                }
+                
+                // Safe to decode as an Array now that the structural checks passed!
                 let results = try JSONDecoder().decode([F1Result].self, from: resultData)
                 
                 for result in results {
-                    guard let num = result.driverNumber,
-                          let acronym = numberToAcronym[num],
-                          var stats = statsDict[acronym],
-                          let pos = result.position else { continue }
+                    // 1. Get the number reported by the API
+                    guard let apiNum = result.driverNumber else { continue }
                     
-                    if session.sessionName == "Race" {
-                        // Manual point calculation in case API returns nil
-                        let racePoints = [1: 25.0, 2: 18.0, 3: 15.0, 4: 12.0, 5: 10.0, 6: 8.0, 7: 6.0, 8: 4.0, 9: 2.0, 10: 1.0]
-                        stats.points += result.points ?? (racePoints[pos] ?? 0.0)
-                        
-                        if pos == 1 { stats.wins += 1 }
-                        if pos <= 3 { stats.podiums += 1 }
-                        if result.dnf == true || result.dns == true { stats.dnfs += 1 }
-                        
-                    } else if session.sessionName == "Sprint" {
-                        let sprintPoints = [1: 8.0, 2: 7.0, 3: 6.0, 4: 5.0, 5: 4.0, 6: 3.0, 7: 2.0, 8: 1.0]
-                        stats.points += result.points ?? (sprintPoints[pos] ?? 0.0)
-                        
-                        if result.dnf == true || result.dns == true { stats.dnfs += 1 }
+                    // 2. Map the API number to the correct driver in your hardcoded list
+                    // This is the bridge between the API's number and your acronym-based logic
+                    guard let driver = DriverInfo.all.first(where: { $0.number == apiNum }) else {
+                        continue
                     }
                     
+                    // 3. Use the ACRONYM as the key for your dictionary
+                    let acronym = driver.code.uppercased()
+                    
+                    // 4. Ensure we have an initialized stats object for this acronym
+                    if statsDict[acronym] == nil {
+                        statsDict[acronym] = DriverStats(
+                            driverNumber: driver.number,
+                            fullName: driver.name,
+                            nameAcronym: acronym,
+                            teamName: driver.team
+                        )
+                    }
+                    
+                    // 5. Safely unwrap the stats object to update it
+                    guard var stats = statsDict[acronym] else { continue }
+                    
+                    // 6. Process logic based on session name
+                    if session.sessionName == "Race" {
+                        // DNF/DNS check
+                        if result.dnf == true || result.dns == true {
+                            stats.dnfs += 1
+                        }
+                        
+                        // Points & Podium/Win logic
+                        if let pos = result.position {
+                            let racePoints = [1: 25.0, 2: 18.0, 3: 15.0, 4: 12.0, 5: 10.0, 6: 8.0, 7: 6.0, 8: 4.0, 9: 2.0, 10: 1.0]
+                            let apiPoints = result.points ?? 0.0
+                            stats.points += apiPoints > 0 ? apiPoints : (racePoints[pos] ?? 0.0)
+                            
+                            if pos == 1 { stats.wins += 1 }
+                            if pos <= 3 { stats.podiums += 1 }
+                        }
+                        
+                    } else if session.sessionName == "Sprint" {
+                        if let pos = result.position {
+                            let sprintPoints = [1: 8.0, 2: 7.0, 3: 6.0, 4: 5.0, 5: 4.0, 6: 3.0, 7: 2.0, 8: 1.0]
+                            let apiPoints = result.points ?? 0.0
+                            stats.points += apiPoints > 0 ? apiPoints : (sprintPoints[pos] ?? 0.0)
+                        }
+                        
+                    } else if session.sessionName == "Qualifying" {
+                        if let pos = result.position, pos == 1 {
+                            stats.poles += 1
+                        }
+                    }
+                    
+                    // 7. Write the updated stats back into the dictionary
                     statsDict[acronym] = stats
                 }
                 highestSessionKey = max(highestSessionKey, sessionKey)
