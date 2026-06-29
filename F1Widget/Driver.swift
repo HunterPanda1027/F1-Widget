@@ -9,6 +9,7 @@ let driver1Key = "selectedDriver1"
 let driver2Key = "selectedDriver2"
 let driver3Key = "selectedDriver3"
 let driver4Key = "selectedDriver4"
+let driver5Key = "selectedDriver5"
 
 // MARK: - Data Model
 
@@ -138,6 +139,21 @@ struct Driver4Provider: TimelineProvider {
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<DriverEntry>) -> Void) {
         let driver = DriverInfo.fromKey(driver4Key)
+        let entry = DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver))
+        completion(Timeline(entries: [entry], policy: .never))
+    }
+}
+
+struct Driver5Provider: TimelineProvider {
+    func placeholder(in context: Context) -> DriverEntry {
+        DriverEntry(date: Date(), driver: DriverInfo.from(code: "PIA"), stats: nil)
+    }
+    func getSnapshot(in context: Context, completion: @escaping (DriverEntry) -> Void) {
+        let driver = DriverInfo.fromKey(driver5Key)
+        completion(DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver)))
+    }
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DriverEntry>) -> Void) {
+        let driver = DriverInfo.fromKey(driver5Key)
         let entry = DriverEntry(date: Date(), driver: driver, stats: getStatsFor(driver: driver))
         completion(Timeline(entries: [entry], policy: .never))
     }
@@ -465,6 +481,19 @@ struct FavouriteDriver4Widget: Widget {
             DriverWidgetView(driver: entry.driver, stats: entry.stats, slotLabel: "FAV 4")
         }
         .configurationDisplayName("Favourite Driver 4")
+        .description("Set your favourite driver in the F1 Widget app.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
+    }
+}
+
+struct FavouriteDriver5Widget: Widget {
+    let kind: String = "FavouriteDriver5Widget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Driver5Provider()) { entry in
+            DriverWidgetView(driver: entry.driver, stats: entry.stats, slotLabel: "FAV 5")
+        }
+        .configurationDisplayName("Favourite Driver 5")
         .description("Set your favourite driver in the F1 Widget app.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()

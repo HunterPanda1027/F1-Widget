@@ -2,142 +2,114 @@ import SwiftUI
 import WidgetKit
 
 struct ContentView: View {
-    @State private var selectedDriver1: String = UserDefaults(suiteName: appGroupID)?.string(forKey: driver1Key) ?? "HAM"
-    @State private var selectedDriver2: String = UserDefaults(suiteName: appGroupID)?.string(forKey: driver2Key) ?? "VER"
-    @State private var selectedDriver3: String = UserDefaults(suiteName: appGroupID)?.string(forKey: driver3Key) ?? "NOR"
-    @State private var selectedDriver4: String = UserDefaults(suiteName: appGroupID)?.string(forKey: driver4Key) ?? "LEC"
+    @State private var selectedDriver1 = UserDefaults(suiteName: appGroupID)?.string(forKey: driver1Key) ?? "HAM"
+    @State private var selectedDriver2 = UserDefaults(suiteName: appGroupID)?.string(forKey: driver2Key) ?? "VER"
+    @State private var selectedDriver3 = UserDefaults(suiteName: appGroupID)?.string(forKey: driver3Key) ?? "NOR"
+    @State private var selectedDriver4 = UserDefaults(suiteName: appGroupID)?.string(forKey: driver4Key) ?? "LEC"
+    @State private var selectedDriver5 = UserDefaults(suiteName: appGroupID)?.string(forKey: driver5Key) ?? "PIA"
 
-    @State private var selectedTeam1: String = UserDefaults(suiteName: appGroupID)?.string(forKey: team1Key) ?? "Ferrari"
-    @State private var selectedTeam2: String = UserDefaults(suiteName: appGroupID)?.string(forKey: team2Key) ?? "McLaren"
+    @State private var selectedTeam1 = UserDefaults(suiteName: appGroupID)?.string(forKey: team1Key) ?? "Ferrari"
+    @State private var selectedTeam2 = UserDefaults(suiteName: appGroupID)?.string(forKey: team2Key) ?? "McLaren"
 
-    let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
-    let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
+    private let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
+    private let carbonBlack = Color(red: 0.08, green: 0.08, blue: 0.09)
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [carbonBlack, .black],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            LinearGradient(colors: [carbonBlack, .black],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 28) {
 
                     // Header
-                    VStack(spacing: 4) {
-                        Text("DRIVER TELEMETRY")
-                            .font(.system(size: 28, weight: .black))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("MY GRID")
+                            .font(.system(size: 36, weight: .black))
                             .fontWidth(.compressed)
                             .italic()
                             .foregroundColor(.white)
-
-                        Rectangle()
-                            .fill(LinearGradient(
-                                colors: [rossoCorsa, rossoCorsa.opacity(0.1)],
-                                startPoint: .leading, endPoint: .trailing))
-                            .frame(height: 2)
+                        Text("Tap a slot to choose what it shows.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.gray)
                     }
                     .padding(.top, 20)
 
-                    // Slot 1
-                    DriverSlotPicker(
-                        slotNumber: 1,
-                        selectedCode: $selectedDriver1,
-                        onSave: { save(code: selectedDriver1, key: driver1Key) }
-                    )
-
-                    // Slot 2
-                    DriverSlotPicker(
-                        slotNumber: 2,
-                        selectedCode: $selectedDriver2,
-                        onSave: { save(code: selectedDriver2, key: driver2Key) }
-                    )
-
-                    // Slot 3
-                    DriverSlotPicker(
-                        slotNumber: 3,
-                        selectedCode: $selectedDriver3,
-                        onSave: { save(code: selectedDriver3, key: driver3Key) }
-                    )
-
-                    // Slot 4
-                    DriverSlotPicker(
-                        slotNumber: 4,
-                        selectedCode: $selectedDriver4,
-                        onSave: { save(code: selectedDriver4, key: driver4Key) }
-                    )
-
-                    // Team section header
-                    VStack(spacing: 4) {
-                        Text("FAVOURITE TEAMS")
-                            .font(.system(size: 28, weight: .black))
-                            .fontWidth(.compressed)
-                            .italic()
-                            .foregroundColor(.white)
-
-                        Rectangle()
-                            .fill(LinearGradient(
-                                colors: [rossoCorsa, rossoCorsa.opacity(0.1)],
-                                startPoint: .leading, endPoint: .trailing))
-                            .frame(height: 2)
+                    // Drivers
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionHeader("DRIVERS")
+                        DriverSlotRow(slotNumber: 1, selectedCode: $selectedDriver1,
+                                      onSave: { save(code: selectedDriver1, key: driver1Key) })
+                        DriverSlotRow(slotNumber: 2, selectedCode: $selectedDriver2,
+                                      onSave: { save(code: selectedDriver2, key: driver2Key) })
+                        DriverSlotRow(slotNumber: 3, selectedCode: $selectedDriver3,
+                                      onSave: { save(code: selectedDriver3, key: driver3Key) })
+                        DriverSlotRow(slotNumber: 4, selectedCode: $selectedDriver4,
+                                      onSave: { save(code: selectedDriver4, key: driver4Key) })
+                        DriverSlotRow(slotNumber: 5, selectedCode: $selectedDriver5,
+                                      onSave: { save(code: selectedDriver5, key: driver5Key) })
                     }
-                    .padding(.top, 8)
 
-                    // Team Slot 1
-                    TeamSlotPicker(
-                        slotNumber: 1,
-                        selectedTeam: $selectedTeam1,
-                        onSave: { saveTeam(name: selectedTeam1, key: team1Key) }
-                    )
+                    // Teams
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionHeader("TEAMS")
+                        TeamSlotRow(slotNumber: 1, selectedTeam: $selectedTeam1,
+                                    onSave: { saveTeam(name: selectedTeam1, key: team1Key) })
+                        TeamSlotRow(slotNumber: 2, selectedTeam: $selectedTeam2,
+                                    onSave: { saveTeam(name: selectedTeam2, key: team2Key) })
+                    }
 
-                    // Team Slot 2
-                    TeamSlotPicker(
-                        slotNumber: 2,
-                        selectedTeam: $selectedTeam2,
-                        onSave: { saveTeam(name: selectedTeam2, key: team2Key) }
-                    )
-
-                    Text("Select your favourite drivers and teams above,\nthen add the widgets to your home screen.")
+                    Text("Add the widgets from your home screen,\nthen pick what each one shows here.")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(.gray)
+                        .foregroundColor(.gray.opacity(0.7))
                         .multilineTextAlignment(.center)
-                        .padding(.bottom, 20)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 28)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
             }
             .task {
                 do {
-                    print("📡 Fetching latest championship standings...")
-                    // 1. Fetch the stats and save them to the App Group
                     try await DriverService.shared.updateChampionshipStandings()
-                    
-                    // 2. Tell the widgets to wake up and redraw with the new numbers
                     WidgetCenter.shared.reloadAllTimelines()
-                    print("✅ Widgets successfully reloaded with new stats!")
                 } catch {
-                    print("❌ Failed to fetch standings: \(error)")
+                    print("Failed to fetch standings: \(error)")
                 }
             }
         }
     }
 
+    // MARK: - Section header
+    @ViewBuilder
+    private func sectionHeader(_ title: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 13, weight: .black))
+                .fontWidth(.expanded)
+                .tracking(2)
+                .foregroundColor(rossoCorsa)
+            Rectangle()
+                .fill(LinearGradient(colors: [rossoCorsa, rossoCorsa.opacity(0.05)],
+                                     startPoint: .leading, endPoint: .trailing))
+                .frame(height: 1.5)
+        }
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Saving
     func save(code: String, key: String) {
         let defaults = UserDefaults(suiteName: appGroupID)
-        print("💾 UserDefaults suite: \(String(describing: defaults))")
-        print("💾 Saving \(code) to key \(key)")
         defaults?.set(code, forKey: key)
         defaults?.synchronize()
-        WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver1Widget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver2Widget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver3Widget")
-        WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteDriver4Widget")
+        for kind in ["FavouriteDriver1Widget", "FavouriteDriver2Widget", "FavouriteDriver3Widget",
+                     "FavouriteDriver4Widget", "FavouriteDriver5Widget"] {
+            WidgetCenter.shared.reloadTimelines(ofKind: kind)
+        }
     }
 
     func saveTeam(name: String, key: String) {
         let defaults = UserDefaults(suiteName: appGroupID)
-        print("💾 Saving team \(name) to key \(key)")
         defaults?.set(name, forKey: key)
         defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: "FavouriteTeam1Widget")
@@ -145,137 +117,124 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Slot Picker Component
+// MARK: - Driver slot row (tap to open a menu)
 
-struct DriverSlotPicker: View {
+struct DriverSlotRow: View {
     let slotNumber: Int
     @Binding var selectedCode: String
     let onSave: () -> Void
 
-    let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
-
-    var selectedDriver: DriverInfo {
-        DriverInfo.from(code: selectedCode)
-    }
+    private var driver: DriverInfo { DriverInfo.from(code: selectedCode) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-
-            // Slot label
-            Text("FAVOURITE \(slotNumber)")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(rossoCorsa)
-                .tracking(2)
-
-            // Current selection preview
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedDriver.name.uppercased())
-                        .font(.system(size: 18, weight: .black))
-                        .fontWidth(.compressed)
-                        .italic()
-                        .foregroundColor(.white)          // ← fixed: explicit white
-
-                    Text(selectedDriver.team.uppercased())
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(selectedDriver.teamColor)
-                        .tracking(1.5)
+        Menu {
+            Picker("Driver", selection: $selectedCode) {
+                ForEach(DriverInfo.all, id: \.code) { d in
+                    Text("\(d.name) — \(d.team)").tag(d.code)
                 }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(driver.teamColor)
+                    .frame(width: 4, height: 38)
 
-                Spacer()
-
-                Text("\(selectedDriver.number)")
-                    .font(.system(size: 32, weight: .black, design: .monospaced))
+                Text("\(driver.number)")
+                    .font(.system(size: 24, weight: .black, design: .monospaced))
                     .fontWidth(.compressed)
                     .italic()
-                    .foregroundColor(selectedDriver.teamColor)
-            }
-            .padding(12)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(10)
+                    .foregroundColor(driver.teamColor)
+                    .frame(width: 44, alignment: .leading)
 
-            // Picker — colorScheme forced dark so rows render white text on dark bg
-            Picker("", selection: $selectedCode) {
-                ForEach(DriverInfo.all, id: \.code) { driver in
-                    Text("\(driver.name) • \(driver.team)")
-                        .foregroundColor(.white)          // ← fixed: explicit white on rows
-                        .tag(driver.code)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(driver.name.uppercased())
+                        .font(.system(size: 17, weight: .black))
+                        .fontWidth(.compressed)
+                        .italic()
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Text(driver.team.uppercased())
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundColor(driver.teamColor)
+                        .lineLimit(1)
                 }
+
+                Spacer(minLength: 8)
+
+                Text("FAV \(slotNumber)")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(.gray)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.gray)
             }
-            .pickerStyle(.wheel)
-            .colorScheme(.dark)                           // ← fixed: forces wheel to dark mode
-            .frame(height: 120)
-            .clipped()
-            .onChange(of: selectedCode) { _, _ in
-                onSave()
-            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .background(Color.white.opacity(0.05))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(driver.teamColor.opacity(0.18), lineWidth: 1)
+            )
         }
-        .padding(16)
-        .background(Color.white.opacity(0.04))
-        .cornerRadius(14)
+        .onChange(of: selectedCode) { _, _ in onSave() }
     }
 }
 
-// MARK: - Team Picker Component
+// MARK: - Team slot row (tap to open a menu)
 
-struct TeamSlotPicker: View {
+struct TeamSlotRow: View {
     let slotNumber: Int
     @Binding var selectedTeam: String
     let onSave: () -> Void
 
-    let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
-
-    var teamColor: Color {
-        DriverInfo.teamColors[selectedTeam] ?? rossoCorsa
-    }
+    private let rossoCorsa = Color(red: 0.937, green: 0.102, blue: 0.176)
+    private var color: Color { DriverInfo.teamColors[selectedTeam] ?? rossoCorsa }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-
-            // Slot label
-            Text("FAVOURITE TEAM \(slotNumber)")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(rossoCorsa)
-                .tracking(2)
-
-            // Current selection preview
-            HStack {
-                Text(selectedTeam.uppercased())
-                    .font(.system(size: 18, weight: .black))
-                    .fontWidth(.compressed)
-                    .italic()
-                    .foregroundColor(teamColor)
-
-                Spacer()
-
-                // Small colour swatch for the team
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(teamColor)
-                    .frame(width: 28, height: 16)
-            }
-            .padding(12)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(10)
-
-            // Picker
-            Picker("", selection: $selectedTeam) {
-                ForEach(TeamInfo.all, id: \.name) { team in
-                    Text(team.name)
-                        .foregroundColor(.white)
-                        .tag(team.name)
+        Menu {
+            Picker("Team", selection: $selectedTeam) {
+                ForEach(TeamInfo.all, id: \.name) { t in
+                    Text(t.name).tag(t.name)
                 }
             }
-            .pickerStyle(.wheel)
-            .colorScheme(.dark)
-            .frame(height: 120)
-            .clipped()
-            .onChange(of: selectedTeam) { _, _ in
-                onSave()
+        } label: {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color)
+                    .frame(width: 4, height: 38)
+
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(color)
+                    .frame(width: 34, height: 20)
+
+                Text(selectedTeam.uppercased())
+                    .font(.system(size: 17, weight: .black))
+                    .fontWidth(.compressed)
+                    .italic()
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text("TEAM \(slotNumber)")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(.gray)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.gray)
             }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .background(Color.white.opacity(0.05))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(color.opacity(0.18), lineWidth: 1)
+            )
         }
-        .padding(16)
-        .background(Color.white.opacity(0.04))
-        .cornerRadius(14)
+        .onChange(of: selectedTeam) { _, _ in onSave() }
     }
 }
 

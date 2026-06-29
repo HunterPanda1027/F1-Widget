@@ -246,7 +246,72 @@ struct F1WidgetEntryView : View {
     private var team: TeamInfo? { teamKey.map { TeamInfo.fromKey($0) } }
     private var themeColor: Color { team?.color ?? rossoCorsa }
 
+    @Environment(\.widgetFamily) private var family
+
     var body: some View {
+        Group {
+            if family == .systemLarge {
+                largeLayout
+            } else {
+                mediumLayout
+            }
+        }
+        .containerBackground(for: .widget) {
+            ZStack {
+                LinearGradient(gradient: Gradient(colors: [carbonBlack, .black]), startPoint: .topLeading, endPoint: .bottomTrailing)
+
+                // Large widget only: the team car, anchored to the very bottom
+                // and kept prominent. The gradient darkens the TOP (title,
+                // sessions, countdown) for legibility and leaves the car bright.
+                if family == .systemLarge, let team {
+                    // Faint track map backdrop on the right, centred ~55% down.
+                    GeometryReader { geo in
+                        let trackWidth: CGFloat = 168
+                        let sideMargin: CGFloat = 12
+                        Image(entry.imageName)
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: trackWidth, height: 126)
+                            .foregroundColor(themeColor.opacity(0.9))
+                            .position(x: geo.size.width - sideMargin - trackWidth / 2,
+                                      y: geo.size.height * 0.55)
+                    }
+
+                    // Team car — scaled to the widget WIDTH only (height follows the
+                    // image's aspect ratio), so no car can ever reach past the sides.
+                    // Anchored to the bottom.
+                    GeometryReader { geo in
+                        Image("\(team.name)Car")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: geo.size.width - 24)
+                            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+                            .opacity(0.9)
+                            .offset(y: -2)
+                    }
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.62), location: 0.0),
+                            .init(color: .black.opacity(0.0), location: 0.55),
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                }
+
+                // Team-coloured wash. Transparent when there's no team.
+                LinearGradient(
+                    gradient: Gradient(colors: [themeColor.opacity(team == nil ? 0.0 : 0.2), .clear]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            .clipped() // keep every background image (car, track) inside the widget bounds
+        }
+    }
+
+    // MARK: - Medium layout (original countdown + track)
+    var mediumLayout: some View {
         HStack(alignment: .top, spacing: 12) {
             
             // RIGHT SIDE: Large Background Track, Large Telemetry Overlay
@@ -271,7 +336,21 @@ struct F1WidgetEntryView : View {
                         if targetDate > entry.date {
                             let timeRemaining = targetDate.timeIntervalSince(entry.date)
                             
-                            if timeRemaining > 3600 {
+                            if timeRemaining > 86400 {
+                                // 🟣 MORE THAN 1 DAY: days + hours (e.g. "2D 5H")
+                                let days = Int(timeRemaining) / 86400
+                                let hours = (Int(timeRemaining) % 86400) / 3600
+
+                                Text("\(days)D \(hours)H")
+                                    .font(.system(size: 40, weight: .black, design: .monospaced))
+                                    .fontWidth(.compressed)
+                                    .italic()
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black, radius: 0.1, x: 1, y: 0)
+                                    .shadow(color: .black, radius: 0.1, x: -1, y: 0)
+                                    .shadow(color: .black, radius: 0.1, x: 0, y: 1)
+                                    .shadow(color: .black, radius: 0.1, x: 0, y: -1)
+                            } else if timeRemaining > 3600 {
                                 // 🟢 MORE THAN 1 HOUR: Manual HH:mm format
                                 let hours = Int(timeRemaining) / 3600
                                 let minutes = (Int(timeRemaining) % 3600) / 60
@@ -395,33 +474,280 @@ struct F1WidgetEntryView : View {
                 }
             }
             .background(alignment: .center) {
-                // Faint, team-coloured logo behind the left-side schedule —
-                // mirrors the driver widgets. Only shown on the team widgets.
+                // Faint logo behind the left-side schedule. Team widgets use the
+                // team logo; the default countdown widget falls back to the F1 logo.
+                Image(team?.logoName ?? "F1")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(themeColor)
+                    .opacity(0.3)
+                    .padding(8)
+            }
+        }
+    }
+
+    // MARK: - Large layout — "Pit Wall"
+    // Header (GP name + circuit + team-logo badge) over a team rule, then a
+    // two-column body — weekend schedule on the left, countdown above the track
+    // map on the right — and the championship stats beneath. The team car is
+    // stuck to the bottom edge via the container background; the content is
+    // packed upward so the car owns the lower band.
+    var largeLayout: some View {
+        VStack(alignment: .leading, spacing: 9) {
+
+            // 1. HEADER — name + circuit (left), team logo badge (right)
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(entry.gpName.uppercased())
+                        .font(.system(size: 30, weight: .black))
+                        .fontWidth(.compressed)
+                        .italic()
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+
+                    Text(entry.locationName.uppercased())
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(themeColor)
+                        .tracking(2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+
+                Spacer(minLength: 6)
+
                 if let team {
                     Image(team.logoName)
                         .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
+                        .frame(width: 42, height: 42)
                         .foregroundColor(themeColor)
-                        .opacity(0.3)
-                        .padding(8)
+                        .shadow(color: .black.opacity(0.45), radius: 2)
+                }
+            }
+
+            // Team-gradient rule
+            Rectangle()
+                .fill(LinearGradient(gradient: Gradient(colors: [themeColor, themeColor.opacity(0.05)]), startPoint: .leading, endPoint: .trailing))
+                .frame(height: 2)
+
+            // 2. BODY — schedule (left) | countdown + track (right)
+            HStack(alignment: .top, spacing: 14) {
+
+                // LEFT: weekend schedule, faint team-logo watermark behind it
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("SCHEDULE")
+                        .font(.system(size: 9, weight: .black))
+                        .fontWidth(.expanded)
+                        .tracking(1.5)
+                        .foregroundColor(.white.opacity(0.45))
+                    scheduleColumn
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(alignment: .center) {
+                    if let team {
+                        Image(team.logoName)
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(themeColor)
+                            .opacity(0.12)
+                    }
+                }
+
+                // RIGHT: countdown only — the track now lives in the background
+                countdownBlock
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
+            }
+
+            // 3. CHAMPIONSHIP — points hero + stat cells
+            statsSection
+
+            // Pack everything up; the car (background) owns the bottom edge.
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // Right-aligned countdown for the large layout (3-tier + LIVE + standby).
+    @ViewBuilder
+    private var countdownBlock: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            if let targetDate = entry.targetSessionDate, let targetName = entry.targetSessionName {
+                if targetDate > entry.date {
+                    Text("UNTIL \(shortName(for: targetName))".uppercased())
+                        .font(.system(size: 10, weight: .black))
+                        .fontWidth(.expanded)
+                        .italic()
+                        .foregroundColor(themeColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+
+                    let timeRemaining = targetDate.timeIntervalSince(entry.date)
+                    Group {
+                        if timeRemaining > 86400 {
+                            let days = Int(timeRemaining) / 86400
+                            let hours = (Int(timeRemaining) % 86400) / 3600
+                            Text("\(days)D \(hours)H")
+                        } else if timeRemaining > 3600 {
+                            let hours = Int(timeRemaining) / 3600
+                            let minutes = (Int(timeRemaining) % 3600) / 60
+                            Text("\(hours):\(String(format: "%02d", minutes))")
+                        } else {
+                            Text(targetDate, style: .timer).monospacedDigit()
+                        }
+                    }
+                    .font(.system(size: 46, weight: .black, design: .monospaced))
+                    .fontWidth(.compressed)
+                    .italic()
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .shadow(color: .black, radius: 0.1, x: 1, y: 0)
+                    .shadow(color: .black, radius: 0.1, x: -1, y: 0)
+                    .shadow(color: .black, radius: 0.1, x: 0, y: 1)
+                    .shadow(color: .black, radius: 0.1, x: 0, y: -1)
+                } else {
+                    Text("LIGHTS OUT")
+                        .font(.system(size: 10, weight: .black))
+                        .fontWidth(.expanded)
+                        .italic()
+                        .foregroundColor(themeColor)
+                    Text("LIVE")
+                        .font(.system(size: 46, weight: .black, design: .monospaced))
+                        .fontWidth(.compressed)
+                        .italic()
+                        .foregroundColor(.white)
+                }
+            } else {
+                Text("AWAITING NEXT EVENT")
+                    .font(.system(size: 9, weight: .black))
+                    .fontWidth(.expanded)
+                    .italic()
+                    .foregroundColor(.gray.opacity(0.5))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text("STANDBY")
+                    .font(.system(size: 46, weight: .black, design: .monospaced))
+                    .fontWidth(.compressed)
+                    .italic()
+                    .foregroundColor(.gray.opacity(0.35))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    // Session timesheet for the large layout (slightly larger text than medium).
+    @ViewBuilder
+    private var scheduleColumn: some View {
+        if entry.weekendSchedule.isEmpty {
+            Text("AWAITING TELEMETRY...")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.8))
+        } else {
+            VStack(spacing: 7) {
+                ForEach(entry.weekendSchedule.prefix(5)) { session in
+                    let isTargetSession = session.sessionName == entry.targetSessionName
+                    HStack {
+                        Text(shortName(for: session.sessionName ?? "Session").uppercased())
+                            .font(.system(size: 13, weight: isTargetSession ? .black : .heavy))
+                            .italic(isTargetSession)
+                            .foregroundColor(isTargetSession ? themeColor : .white)
+                        Spacer()
+                        Text(formatLocalTime(for: session.startDate))
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundColor(isTargetSession ? .white : .gray)
+                    }
                 }
             }
         }
-        .containerBackground(for: .widget) {
-                    ZStack {
-                        LinearGradient(gradient: Gradient(colors: [carbonBlack, .black]), startPoint: .topLeading, endPoint: .bottomTrailing)
-         
-                        // Team-coloured wash. Always present (no conditional view in
-                        // the container background), fully transparent when there's
-                        // no team so the default widget looks like the original.
-                        LinearGradient(
-                            gradient: Gradient(colors: [themeColor.opacity(team == nil ? 0.0 : 0.2), .clear]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+    }
+
+    // Team points (hero, with accent bar) + a row of modern stat cards.
+    @ViewBuilder
+    private var statsSection: some View {
+        if let team {
+            let s = teamStats()
+            VStack(alignment: .leading, spacing: 8) {
+
+                // Points hero with a team-coloured accent bar
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(themeColor)
+                        .frame(width: 4, height: 40)
+
+                    VStack(alignment: .leading, spacing: -2) {
+                        Text(team.name.uppercased())
+                            .font(.system(size: 11, weight: .black))
+                            .fontWidth(.compressed)
+                            .italic()
+                            .tracking(1)
+                            .foregroundColor(themeColor)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(String(format: "%g", s.points))
+                                .font(.system(size: 38, weight: .black, design: .monospaced))
+                                .fontWidth(.compressed)
+                                .italic()
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)
+                            Text("PTS")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundColor(.gray)
+                        }
                     }
+                    Spacer()
                 }
+
+                // Modern, glassy stat cards
+                HStack(spacing: 6) {
+                    statCard("WINS", "\(s.wins)")
+                    statCard("PODIUMS", "\(s.podiums)")
+                    statCard("POLES", "\(s.poles)")
+                    statCard("DNFS", "\(s.dnfs)")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // A single modern, glassy stat card.
+    @ViewBuilder
+    private func statCard(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 20, weight: .black, design: .monospaced))
+                .fontWidth(.compressed)
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text(label)
+                .font(.system(size: 8, weight: .black))
+                .foregroundColor(.white.opacity(0.6))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(themeColor.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    // Aggregate the selected team's stats from the cached standings (both drivers).
+    private func teamStats() -> (points: Double, wins: Int, podiums: Int, poles: Int, dnfs: Int) {
+        guard let team else { return (0, 0, 0, 0, 0) }
+        let rows = DriverService.shared.getCachedStandings().filter { $0.teamName == team.name }
+        return (
+            rows.reduce(0) { $0 + $1.points },
+            rows.reduce(0) { $0 + $1.wins },
+            rows.reduce(0) { $0 + $1.podiums },
+            rows.reduce(0) { $0 + $1.poles },
+            rows.reduce(0) { $0 + $1.dnfs }
+        )
     }
     
     // --- Helpers ---
@@ -469,7 +795,7 @@ struct FavouriteTeam1Widget: Widget {
         }
         .configurationDisplayName("Team Tracker 1")
         .description("Grand Prix countdown in your favourite team's colours.")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 
@@ -481,6 +807,6 @@ struct FavouriteTeam2Widget: Widget {
         }
         .configurationDisplayName("Team Tracker 2")
         .description("Grand Prix countdown in your favourite team's colours.")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }

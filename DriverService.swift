@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 // --- 1. Data Models ---
 struct F1Driver: Codable, Identifiable {
@@ -56,8 +57,15 @@ class DriverService {
     func updateChampionshipStandings() async throws {
 
         // 🚨 Fetch the last processed session key so we don't recalculate the whole season!
-        // (If you ever need to force a reset, temporarily change this to: let lastProcessedKey = 0)
-        let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 0  //appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ??
+        //
+        // RESET SWITCH: if this is 0, we treat it as a full reset — the cache is
+        // cleared and the entire season is rebuilt from scratch. To force a reset,
+        // temporarily change this line to: let lastProcessedKey = 0
+        let lastProcessedKey = appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 0 //appGroupDefaults?.integer(forKey: "lastProcessedSessionKey") ?? 
+
+        // When the key is 0 we do a clean rebuild; otherwise we accumulate normally
+        // and NEVER clear the cache.
+        let isReset = (lastProcessedKey == 0)
         
         guard let sessionsUrl = URL(string: "https://api.openf1.org/v1/sessions?year=2026") else { return }
         
@@ -79,7 +87,7 @@ class DriverService {
         var statsDict: [String: DriverStats] = [:]
         var numberToAcronym: [Int: String] = [:]
         
-        // 3. Load your hardcoded 2026 grid
+        // 3. Load your hardcoded 2026 grid (all tallies start at zero)
         let drivers = DriverInfo.all
         
         for driver in drivers {
@@ -95,7 +103,9 @@ class DriverService {
             )
         }
         
-        // 4. Filter for only unprocessed point-scoring sessions
+        // 4. Filter for only unprocessed point-scoring sessions.
+        //    On a reset (lastProcessedKey == 0) this naturally includes EVERY past
+        //    session, so the whole season is recomputed from scratch.
         let newSessions = allSessions.filter {
             ($0.startDate ?? Date.distantFuture) < Date() &&
             ($0.sessionKey ?? 0) > lastProcessedKey &&
@@ -106,6 +116,31 @@ class DriverService {
         guard !newSessions.isEmpty else {
             print("✨ No new sessions to process. Cache is pristine.")
             return
+        }
+        
+        if isReset {
+            // 🧹 RESET: wipe the cache and rebuild from zero. We deliberately do NOT
+            // seed from the old cache here, so the freshly recomputed totals replace
+            // everything cleanly with no risk of double-counting.
+            print("♻️ lastProcessedKey == 0 → clearing cache and rebuilding the full season.")
+            appGroupDefaults?.removeObject(forKey: "cachedStandings")
+        } else {
+            // ➕ NORMAL: seed from the previously accumulated standings so we ADD the
+            // new sessions on top instead of resetting. Never clears the cache.
+            for cached in getCachedStandings() {
+                let key = cached.nameAcronym.uppercased()
+                if var base = statsDict[key] {
+                    base.points = cached.points
+                    base.wins = cached.wins
+                    base.podiums = cached.podiums
+                    base.dnfs = cached.dnfs
+                    base.poles = cached.poles
+                    statsDict[key] = base
+                } else {
+                    // Driver in the cache but not in the current grid — keep them as-is.
+                    statsDict[key] = cached
+                }
+            }
         }
         
         var highestSessionKey = lastProcessedKey
@@ -209,9 +244,13 @@ class DriverService {
             appGroupDefaults?.set(encoded, forKey: "cachedStandings")
             appGroupDefaults?.set(highestSessionKey, forKey: "lastProcessedSessionKey")
         }
+        
+        // 7. Redraw the widgets with the freshly computed standings. This matters
+        //    especially on a reset, so the cleared/rebuilt data shows immediately.
+        WidgetCenter.shared.reloadAllTimelines()
     }
     
-    // 7. Retrieve from cache for the Widget View
+    // 8. Retrieve from cache for the Widget View
     func getCachedStandings() -> [DriverStats] {
         guard let data = appGroupDefaults?.data(forKey: "cachedStandings"),
               let standings = try? JSONDecoder().decode([DriverStats].self, from: data) else { return [] }
